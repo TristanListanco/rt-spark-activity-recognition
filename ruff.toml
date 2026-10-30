@@ -1,0 +1,8 @@
+# Lint config for the Python in cloud/, ml/ and tools/ (checked by .github/workflows/repo.yml).
+# firmware/ holds RT-Thread's own build scripts, so it is excluded.
+target-version = "py312"
+line-length = 100
+extend-exclude = ["firmware", "app", "*.ipynb"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]

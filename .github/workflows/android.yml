@@ -1,0 +1,71 @@
+name: Android
+
+# Lints, unit-tests and builds the debug APK of the Android Studio project in
+# app/. The APK is uploaded as an artifact so it can be sideloaded onto a phone.
+# setup-gradle also validates the Gradle wrapper JAR.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect project
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.find.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: find
+        run: |
+          if [ -f app/gradlew ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::app/ has no Gradle project yet; skipping Android CI."
+          fi
+
+  build:
+    name: Lint, test, build
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Lint, unit tests, debug build
+        run: |
+          chmod +x gradlew
+          ./gradlew --stacktrace lintDebug testDebugUnitTest assembleDebug
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-debug-apk
+          path: app/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: android-reports
+          path: app/app/build/reports/

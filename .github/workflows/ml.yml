@@ -1,0 +1,66 @@
+name: ML
+
+# Installs the ml/ uv project from its lockfile and runs its tests
+# (preprocessing, model shape, exported ONNX model checks). Training itself
+# is not run in CI because the Kaggle dataset is not committed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ml/**"
+      - ".github/workflows/ml.yml"
+  pull_request:
+    paths:
+      - "ml/**"
+      - ".github/workflows/ml.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect project
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.find.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: find
+        run: |
+          if [ -f ml/pyproject.toml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ml/ has no pyproject.toml yet; skipping ML CI."
+          fi
+
+  test:
+    name: Test
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: ml
+          enable-cache: true
+          cache-dependency-glob: ml/uv.lock
+      - name: Install from lockfile
+        run: uv sync --locked
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then
+            uv run pytest -q
+          else
+            echo "::notice::ml/ has no tests yet."
+          fi

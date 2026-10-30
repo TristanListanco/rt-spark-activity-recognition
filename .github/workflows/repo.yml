@@ -1,0 +1,64 @@
+name: Repo checks
+
+# Runs on every push/PR: keeps the public repo free of secrets and the lab
+# handout, lints the workflows themselves, and lints all Python code.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: No secrets or large files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Forbidden files are not tracked
+        run: |
+          forbidden=$(git ls-files | grep -E \
+            -e '(^|/)\.env$' \
+            -e '(^|/)secrets\.h$' \
+            -e '^cloud/mosquitto/passwd$' \
+            -e '\.(jks|keystore|pem|key)$' \
+            -e '^BCA180.*\.pdf$' || true)
+          if [ -n "$forbidden" ]; then
+            echo "::error::These files must not be committed (secrets or lab handout):"
+            echo "$forbidden"
+            exit 1
+          fi
+
+      - name: No files over 10 MB
+        run: |
+          large=$(git ls-files -z | xargs -0 du -k | awk '$1 > 10240 { print $2 " (" int($1 / 1024) " MB)" }')
+          if [ -n "$large" ]; then
+            echo "::error::Files over 10 MB; keep datasets and build outputs out of git:"
+            echo "$large"
+            exit 1
+          fi
+
+  actionlint:
+    name: Lint workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run actionlint
+        run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.12 -color
+
+  ruff:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Run ruff (config in ruff.toml)
+        run: uvx ruff check --output-format=github .

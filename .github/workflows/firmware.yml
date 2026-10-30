@@ -1,0 +1,88 @@
+name: Firmware
+
+# Builds the RT-Thread project in firmware/ (the `scons --dist` export of the
+# stm32f407-rt-spark BSP) with the Arm GNU toolchain and uploads the image.
+# Real Wi-Fi/MQTT credentials never reach CI: secrets.example.h is used instead.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect project
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.find.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: find
+        run: |
+          if [ -f firmware/SConstruct ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::firmware/ has no SConstruct yet; skipping firmware CI."
+          fi
+
+  build:
+    name: Build
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install Arm GNU toolchain and SCons
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi
+          pip install scons kconfiglib
+          arm-none-eabi-gcc --version | head -1
+      - name: Use placeholder secrets
+        run: |
+          if [ -f applications/secrets.example.h ] && [ ! -f applications/secrets.h ]; then
+            cp applications/secrets.example.h applications/secrets.h
+          fi
+      - name: Build
+        env:
+          RTT_CC: gcc
+          RTT_EXEC_PATH: /usr/bin
+        run: scons -j"$(nproc)"
+      - name: Size report
+        run: |
+          {
+            echo '### Firmware size'
+            echo '```'
+            arm-none-eabi-size rtthread.elf
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rtthread-firmware
+          path: |
+            firmware/rtthread.bin
+            firmware/rtthread.elf
+            firmware/rtthread.map
+          retention-days: 14
