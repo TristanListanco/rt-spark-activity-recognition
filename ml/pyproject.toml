@@ -1,0 +1,35 @@
+[project]
+name = "activity-ml"
+version = "0.1.0"
+description = "Walk/run classifier for the RT-Spark activity-recognition lab"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "matplotlib>=3.11",
+  "numpy>=2.5",
+  "onnx>=1.23",
+  "onnxruntime>=1.31",
+  "onnxscript>=0.7",
+  "pandas>=3.1",
+  "scikit-learn>=1.9",
+  "torch>=2.15",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.2"]
+
+[tool.uv]
+package = false
+
+# On Linux (CI, Azure VM) take the CPU-only PyTorch build instead of the
+# default CUDA one, which pulls in several GB of GPU libraries.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

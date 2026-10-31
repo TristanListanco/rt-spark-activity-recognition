@@ -3,7 +3,7 @@
 The formats each part of the system relies on: firmware → MQTT → classifier → database → API → app.
 If you change anything here, update every consumer in the same commit, bump the version, and add a line to the changelog at the bottom.
 
-Version: **0.3**
+Version: **0.4**
 
 Values marked **provisional** are checked during the ML step (M2) and then finalized.
 
@@ -20,18 +20,17 @@ Values marked **provisional** are checked during the ML step (M2) and then final
 
 These must match the Kaggle run-or-walk dataset (https://www.kaggle.com/vmalyi/run-or-walk) so the model sees the same kind of data from the board as it was trained on.
 
-| Item | Value | Status |
+| Item | Value | Evidence (M2, see `docs/ml-report.md`) |
 |---|---|---|
-| Sample rate `R` | 5 Hz (the dataset is about 5.4 Hz) | provisional, M2 measures it from the dataset timestamps |
-| Accelerometer unit | g (assumed) | provisional, M2 checks the magnitude: ≈1 → g, ≈9.8 → m/s² |
-| Gyroscope unit | rad/s (assumed) | provisional, M2 checks the value ranges |
-| Gravity in accel | unknown | M2 checks whether the dataset's accelerometer data includes gravity. If not, the classifier removes gravity from the board's data |
-| Axis mapping | board X/Y/Z → dataset x/y/z | M4 checks with the board on the wrist |
+| Sample rate `R` | **5 Hz** | Dataset timestamps are H:M:S:nanoseconds; the median step is 0.2000 s (p10–p90: 0.199–0.201 s) |
+| Accelerometer unit | **g, gravity included** | Mean \|a\| while walking is 1.08 g. Without gravity it would be near 0; in m/s² it would be near 9.8 |
+| Gyroscope unit | **rad/s** | \|ω\| averages 1.9 (walk) / 2.7 (run), max 11. In deg/s these would be in the hundreds |
+| Axis mapping | board X/Y/Z → dataset x/y/z | M4 checks with the board on the wrist. In the dataset, gravity lies along −y when the arm hangs down |
 | Sample order | `[ax, ay, az, gx, gy, gz]` | fixed |
-| Window `W` | 10 samples (≈2 s) | provisional |
+| Window `W` | **10 samples (2 s)** | M2 compared 10 and 20. 20 is 0.15 points more accurate but reacts about 2 s slower (`docs/ml-report.md`, section 5) |
 | Prediction rate | once per second (stride = `R` samples) | fixed |
 
-The firmware converts raw IMU readings to these units **before** publishing. Any other preprocessing (gravity removal, normalization) lives in `ml/activity_ml/preprocess.py`, which training and the live classifier both use.
+The firmware converts raw IMU readings to these units **before** publishing; nothing else is done to the data on the board. The cloud cuts the stream into windows with `ml/activity_ml/preprocess.py`. Everything after that (magnitude channels, normalization) is inside the exported ONNX model, so training and the live classifier process data identically.
 
 ## 3. MQTT (board → broker)
 
@@ -132,3 +131,4 @@ CREATE INDEX predictions_device_ts ON predictions (device_id, ts DESC);
 | 0.1 | 2026-10-11 | Initial draft (two-person split) |
 | 0.2 | 2026-10-30 | Solo project; provisional R = 5 Hz, W = 10, gravity check added |
 | 0.3 | 2026-10-31 | Local API port 5000 → 8000; documented 400 cases |
+| 0.4 | 2026-10-31 | M2: R = 5 Hz, accel in g with gravity, gyro in rad/s, W = 10 confirmed from the data; no gravity removal |

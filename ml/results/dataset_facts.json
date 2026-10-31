@@ -1,0 +1,47 @@
+{
+  "rows": 88588,
+  "users": [
+    "viktor"
+  ],
+  "recording_days": 12,
+  "sessions": 339,
+  "session_length_median_samples": 54,
+  "sample_interval_median_s": 0.2,
+  "sample_rate_hz": 5.0,
+  "wrist_rows": {
+    "left": 42330,
+    "right": 46258
+  },
+  "accel_range_g": [
+    -5.35,
+    5.6
+  ],
+  "gyro_range_rad_s": [
+    -9.48,
+    11.27
+  ],
+  "by_activity": {
+    "walk": {
+      "rows": 44223,
+      "accel_magnitude_mean_g": 1.076,
+      "accel_magnitude_median_g": 1.061,
+      "gyro_magnitude_mean_rad_s": 1.91,
+      "accel_axis_mean_g": {
+        "x": -0.057,
+        "y": -0.984,
+        "z": -0.22
+      }
+    },
+    "run": {
+      "rows": 44365,
+      "accel_magnitude_mean_g": 1.452,
+      "accel_magnitude_median_g": 1.074,
+      "gyro_magnitude_mean_rad_s": 2.732,
+      "accel_axis_mean_g": {
+        "x": -0.093,
+        "y": -0.142,
+        "z": -0.407
+      }
+    }
+  }
+}

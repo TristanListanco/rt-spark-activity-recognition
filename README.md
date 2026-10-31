@@ -45,7 +45,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 - [x] M0: Repository set up
 - [x] M1: Local cloud stack (broker, DB, API stub, fake publisher)
 - [x] M1b: Firmware toolchain builds and flashes the stock BSP
-- [ ] M2: ML model trained and exported
+- [x] M2: ML model trained and exported
 - [ ] M3: Classifier + API working end to end with simulated data
 - [ ] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
 - [ ] M5: Android app
@@ -93,7 +93,19 @@ docker compose -f cloud/docker-compose.yml logs -f classifier
 Port 8000 is used instead of 5000 because macOS reserves 5000 for AirPlay Receiver.
 
 ### Machine learning
-_Coming in M2._
+
+`ml/` is a [uv](https://docs.astral.sh/uv/) project (Python 3.12). On Linux it installs the CPU-only PyTorch build. Put the Kaggle run-or-walk CSV at `ml/data/dataset.csv` (it is not committed), then:
+
+```bash
+cd ml
+uv sync
+uv run python explore.py    # dataset facts + figures (docs/ml/)
+uv run python evaluate.py   # compare models on unseen days, rotated devices, other wrist (~13 min)
+uv run python train.py      # train the deployed model → models/model.onnx + model_meta.json
+uv run pytest
+```
+
+The exported model takes raw 2 s windows `(batch, 10, 6)` in g and rad/s and returns `[walk, run]` probabilities. Magnitude channels and normalization happen inside the ONNX file, so the classifier service needs only numpy and ONNX Runtime.
 
 ### Firmware
 
@@ -153,7 +165,15 @@ Each part has its own GitHub Actions workflow in `.github/workflows/`. A workflo
 
 ## Results
 
-_ML results (session-split, cross-wrist and own-data evaluation) will be summarized here and detailed in `docs/ml-report.md`._
+Full details in [docs/ml-report.md](docs/ml-report.md). The deployed model is a 1D-CNN with 1,218 parameters (30 KB ONNX, ≈0.01 ms per prediction), trained with left/right mirroring and random 3D rotations:
+
+| Test | Accuracy |
+|---|---|
+| Unseen recording day (12-fold) | 99.71% |
+| Unseen day, device rotated to a random orientation | 99.70% |
+| Train left wrist → test right / train right → test left | 99.62% / 98.82% |
+
+The same CNN trained without rotations also scores 99.9% on unseen days, but drops to 52% once the device is rotated. It learned *how the iPhone was worn* instead of how walking and running move. That is why rotation training matters for the RT-Spark. Results on data recorded with the board are added in M7.
 
 ## Demo
 
