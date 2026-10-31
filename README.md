@@ -46,7 +46,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 - [x] M1: Local cloud stack (broker, DB, API stub, fake publisher)
 - [x] M1b: Firmware toolchain builds and flashes the stock BSP
 - [x] M2: ML model trained and exported
-- [ ] M3: Classifier + API working end to end with simulated data
+- [x] M3: Classifier + API working end to end with simulated data
 - [ ] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
 - [ ] M5: Android app
 - [ ] M6: Deployed to an Azure VM
@@ -65,30 +65,36 @@ Needs Docker. Four services run from `cloud/docker-compose.yml`:
 |---|---|---|
 | `mosquitto` | 1883 | MQTT broker; password auth only, credentials from `cloud/.env` |
 | `db` | internal | PostgreSQL 16; schema in `cloud/db/init.sql` |
-| `classifier` | — | Subscribes to `activity/+/imu`. For now it validates each message against the contract and logs it; the model arrives in M3 |
-| `api` | 8000 | Flask API. For now it serves generated data (30 s walk / 30 s run) so the app can be built early; real data arrives in M3 |
+| `classifier` | — | Subscribes to `activity/+/imu` and validates each message against the contract. Keeps a 2 s window per device, classifies it once per second with `ml/models/model.onnx` (ONNX Runtime; no PyTorch in the image), and writes the result to `predictions` |
+| `api` | 8000 | Flask API over the `predictions` table (contract section 4), plus a live web page at `/` |
 
 ```bash
 cp cloud/.env.example cloud/.env        # then set real passwords
 docker compose -f cloud/docker-compose.yml up -d --build --wait
 
 curl http://localhost:8000/api/health
-curl "http://localhost:8000/api/latest?device_id=rtspark-01"
+open http://localhost:8000/             # live page
 ```
 
-Simulate the board with `tools/fake_publisher.py`, which reads the MQTT credentials from `cloud/.env`:
+Simulate the board with `tools/fake_publisher.py`, which reads the MQTT credentials from `cloud/.env`. Its default signals are simple but physically plausible, so the model labels them correctly. Add `--csv ml/data/dataset.csv` to replay real dataset rows instead.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
 .venv/bin/python tools/fake_publisher.py                   # alternate walk/run every 30 s
 .venv/bin/python tools/fake_publisher.py --activity run --count 10
 
-# Watch the raw MQTT traffic and what the classifier receives
-mosquitto_sub -h localhost -u device -P <MQTT_PASSWORD> -t 'activity/#' -v
-docker compose -f cloud/docker-compose.yml logs -f classifier
+curl "http://localhost:8000/api/latest?device_id=rtspark-01"
+mosquitto_sub -h localhost -u device -P <MQTT_PASSWORD> -t 'activity/#' -v   # raw traffic
+docker compose -f cloud/docker-compose.yml logs -f classifier                # one line per prediction
 ```
 
-`cloud/scripts/smoke_test.sh` runs all of this end to end: start the stack, check the API, check the broker rejects anonymous clients, publish 5 messages, and confirm the classifier received them. CI runs the same script.
+`cloud/scripts/smoke_test.sh` checks the whole path end to end, and CI runs the same script:
+1. Start the stack and check the API and database are healthy.
+2. Check the broker rejects anonymous clients.
+3. Simulate a board that walks for 6 s and then runs for 6 s.
+4. Expect 11 stored predictions, a latest label of "run", both activities in the history, a matching daily summary, the web page loading, and a clean classifier log.
+
+Replaying real dataset rows through the running stack, the label switched to "run" about 1 s after the data switched.
 
 Port 8000 is used instead of 5000 because macOS reserves 5000 for AirPlay Receiver.
 

@@ -3,7 +3,7 @@
 The formats each part of the system relies on: firmware → MQTT → classifier → database → API → app.
 If you change anything here, update every consumer in the same commit, bump the version, and add a line to the changelog at the bottom.
 
-Version: **0.4**
+Version: **0.5**
 
 Values marked **provisional** are checked during the ML step (M2) and then finalized.
 
@@ -74,12 +74,13 @@ Bad query parameters (missing `device_id`, `limit` outside 1–500, malformed `b
 ```json
 { "status": "ok" }
 ```
+Also checks the database: returns `503` with `{ "error": "database unavailable" }` if it can't be reached. Every other endpoint returns the same `503` during a database outage.
 
 ### `GET /api/latest?device_id=rtspark-01`
 ```json
 { "device_id": "rtspark-01", "activity": "walk", "confidence": 0.93, "ts": 1760000000000 }
 ```
-Returns `404` with `{ "error": "no data" }` if there are no predictions for the device yet.
+Returns `404` with `{ "error": "no data" }` if there are no predictions for the device yet. `ts` is the time of the newest sample in the classified window. Compare it with the current time to show "updated N s ago" or to notice that the board went offline.
 
 ### `GET /api/history?device_id=rtspark-01&limit=50&before=<ts>`
 - `limit`: default `50`, max `500`
@@ -96,11 +97,24 @@ Returns `404` with `{ "error": "no data" }` if there are no predictions for the 
 ```json
 { "date": "2026-10-30", "seconds": { "walk": 1240, "run": 315 } }
 ```
+`date` defaults to today, as a calendar day in `APP_TIMEZONE` (Asia/Manila). There is one prediction per second, so `seconds` is the number of predictions of each activity that day. Both keys are always present.
+
+### `GET /`
+A small live web page (current activity, today's totals, recent predictions) that polls the endpoints above. `/?device=<id>` shows another device.
 
 ### Errors
 Any error → HTTP 4xx/5xx with `{ "error": "<message>" }`.
 
-## 5. Activity labels
+## 5. Classifier behaviour
+
+How `cloud/classifier` turns the MQTT stream into predictions:
+
+- It keeps the newest `W` = 10 samples per device. The first prediction comes after 2 messages (2 s); after that there is one per message (per second).
+- After a pause longer than 3 s (reconnect, reboot) it starts a fresh window, so a window never joins samples from before and after the pause.
+- Messages whose `rate_hz` differs from the model's (5) are ignored and logged, because the model only understands 5 Hz data.
+- Invalid messages (wrong topic, bad JSON, wrong shape) are logged and dropped.
+
+## 6. Activity labels
 
 | Label | Dataset value |
 |---|---|
@@ -109,7 +123,7 @@ Any error → HTTP 4xx/5xx with `{ "error": "<message>" }`.
 
 Adding a class (e.g. `idle`) needs a version bump, because the app must know the new label to show its icon and colour.
 
-## 6. Database
+## 7. Database
 
 ```sql
 CREATE TABLE predictions (
@@ -132,3 +146,4 @@ CREATE INDEX predictions_device_ts ON predictions (device_id, ts DESC);
 | 0.2 | 2026-10-30 | Solo project; provisional R = 5 Hz, W = 10, gravity check added |
 | 0.3 | 2026-10-31 | Local API port 5000 → 8000; documented 400 cases |
 | 0.4 | 2026-10-31 | M2: R = 5 Hz, accel in g with gravity, gyro in rad/s, W = 10 confirmed from the data; no gravity removal |
+| 0.5 | 2026-10-31 | M3: classifier behaviour section, 503 on database outage, meaning of `ts` and `seconds`, web page at `/` |

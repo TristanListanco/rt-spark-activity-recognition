@@ -44,14 +44,22 @@ services:
     restart: unless-stopped
 
   classifier:
-    build: ./classifier
+    build:
+      context: ..  # repository root, so the image can include ml/models
+      dockerfile: cloud/classifier/Dockerfile
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
     depends_on:
       mosquitto:
+        condition: service_healthy
+      db:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "test", "-f", "/tmp/healthy"]
@@ -66,8 +74,15 @@ services:
     build: ./api
     environment:
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Manila}
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
     ports:
       - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
       interval: 30s

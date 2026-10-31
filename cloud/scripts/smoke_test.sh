@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end smoke test for the cloud stack (also run by .github/workflows/cloud.yml).
-# Starts the stack, checks the API and broker auth, publishes fake IMU messages,
-# and checks that the classifier received them. Leaves the stack running.
+# Starts the stack, simulates a board that walks for 6 s then runs for 6 s, and
+# checks that predictions flow broker → classifier → database → API.
+# Leaves the stack running.
 set -euo pipefail
 
 cloud_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,6 +11,7 @@ compose=(docker compose -f "$cloud_dir/docker-compose.yml")
 
 step() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+json() { python3 -c "import json, sys; d = json.load(sys.stdin); print($1)"; }
 
 if [ ! -f "$cloud_dir/.env" ]; then
   echo "cloud/.env not found; creating it from .env.example"
@@ -24,40 +26,57 @@ device="smoke-test-$$"
 
 step "Starting the stack"
 "${compose[@]}" up -d --build --wait --wait-timeout 180
+since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-step "API health"
+step "API health (includes the database)"
 curl -fsS "$api/api/health" | grep -q '"ok"' || fail "API health check"
 
-step "API latest"
-curl -fsS "$api/api/latest?device_id=$device" \
-  | python3 -c 'import json, sys; assert json.load(sys.stdin)["activity"] in ("walk", "run")' \
-  || fail "/api/latest did not return a prediction"
+step "No data yet for $device → 404"
+status=$(curl -s -o /dev/null -w '%{http_code}' "$api/api/latest?device_id=$device")
+[ "$status" = 404 ] || fail "expected 404 for a new device, got $status"
 
 step "Broker rejects anonymous clients"
 if "${compose[@]}" exec -T mosquitto mosquitto_pub -h localhost -t test -m x 2>/dev/null; then
   fail "anonymous publish was accepted"
 fi
 
-step "Publishing 5 fake IMU messages as $device"
+step "Simulated board: 6 s walking, then 6 s running"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
-venv="$tmp_dir/venv"
-python3 -m venv "$venv"
-"$venv/bin/pip" install -q --disable-pip-version-check -r "$repo_dir/tools/requirements.txt"
-since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-"$venv/bin/python" "$repo_dir/tools/fake_publisher.py" \
-  --host localhost --port "${MQTT_PORT:-1883}" --device-id "$device" --activity run --count 5
+python3 -m venv "$tmp_dir/venv"
+"$tmp_dir/venv/bin/pip" install -q --disable-pip-version-check -r "$repo_dir/tools/requirements.txt"
+"$tmp_dir/venv/bin/python" "$repo_dir/tools/fake_publisher.py" \
+  --host localhost --port "${MQTT_PORT:-1883}" --device-id "$device" \
+  --activity alternate --switch-every 6 --count 12
 
-step "Classifier received them"
-received=0
+step "Predictions stored (expect 11: the first needs 2 messages to fill the 2 s window)"
+count=0
 for _ in $(seq 1 20); do
-  received=$("${compose[@]}" logs --no-color --since "$since" classifier | grep -c "received device=$device" || true)
-  [ "$received" -ge 5 ] && break
+  count=$(curl -fsS "$api/api/history?device_id=$device&limit=50" | json 'len(d)')
+  [ "$count" -ge 11 ] && break
   sleep 0.5
 done
-[ "$received" -ge 5 ] || fail "classifier logged $received of 5 messages"
-if "${compose[@]}" logs --no-color --since "$since" classifier | grep -q "invalid message"; then
-  fail "classifier rejected a message"
+[ "$count" -ge 11 ] || fail "only $count predictions stored"
+
+step "Latest prediction is 'run', and the history contains both activities"
+latest=$(curl -fsS "$api/api/latest?device_id=$device" | json 'd["activity"], round(d["confidence"], 2)')
+echo "latest: $latest"
+case "$latest" in run*) ;; *) fail "expected run, got $latest" ;; esac
+activities=$(curl -fsS "$api/api/history?device_id=$device&limit=50" | json '" ".join(sorted({r["activity"] for r in d}))')
+[ "$activities" = "run walk" ] || fail "history has: $activities"
+
+step "Today's summary counts those seconds"
+total=$(curl -fsS "$api/api/summary?device_id=$device" | json 'sum(d["seconds"].values())')
+[ "$total" -ge 11 ] || fail "summary total is $total"
+
+step "Web page"
+curl -fsS "$api/" | grep -q '<title>Live Activity</title>' || fail "index page"
+
+step "Classifier log is clean"
+logs=$("${compose[@]}" logs --no-color --since "$since" classifier)
+if grep -qE "invalid message|NOT STORED|Traceback" <<<"$logs"; then
+  grep -E "invalid message|NOT STORED|Traceback" <<<"$logs" | head -5
+  fail "classifier reported problems"
 fi
 
-printf '\nSmoke test passed: API up, broker auth on, classifier received %s messages.\n' "$received"
+printf '\nSmoke test passed: %s predictions, latest %s, summary %s s.\n' "$count" "$latest" "$total"

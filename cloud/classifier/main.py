@@ -1,18 +1,22 @@
 """Classifier service.
 
-M1: subscribes to the board's IMU topic and validates every message against
-the contract, logging what arrives. M3 adds the sliding window, the ONNX model
-and writing predictions to PostgreSQL.
+Subscribes to every board's IMU topic, validates each message against the
+contract, keeps a 2 s sliding window per device, classifies it once per
+second with the exported ONNX model, and stores the result in PostgreSQL.
 """
 
 import logging
 import os
 import signal
+import time
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
 from payload import PayloadError, parse_imu_message
+from pipeline import Classifier
+from predictor import Model
+from store import PredictionWriter
 
 TOPIC = "activity/+/imu"
 HEALTH_FILE = Path("/tmp/healthy")  # present while connected; used by the Compose healthcheck
@@ -20,7 +24,7 @@ HEALTH_FILE = Path("/tmp/healthy")  # present while connected; used by the Compo
 log = logging.getLogger("classifier")
 
 
-def on_connect(client, userdata, flags, reason_code, properties):
+def on_connect(client, classifier, flags, reason_code, properties):
     if reason_code.is_failure:
         log.error("MQTT connection refused: %s", reason_code)
         return
@@ -29,24 +33,18 @@ def on_connect(client, userdata, flags, reason_code, properties):
     log.info("connected to broker, subscribed to %s", TOPIC)
 
 
-def on_disconnect(client, userdata, flags, reason_code, properties):
+def on_disconnect(client, classifier, flags, reason_code, properties):
     HEALTH_FILE.unlink(missing_ok=True)
     log.warning("disconnected from broker: %s", reason_code)
 
 
-def on_message(client, userdata, msg):
+def on_message(client, classifier: Classifier, msg):
     try:
         batch = parse_imu_message(msg.topic, msg.payload)
     except PayloadError as exc:
         log.warning("invalid message on %s: %s", msg.topic, exc)
         return
-    log.info(
-        "received device=%s rate=%dHz samples=%d ts=%d",
-        batch.device_id,
-        batch.rate_hz,
-        len(batch.samples),
-        batch.ts,
-    )
+    classifier.handle(batch, now_monotonic=time.monotonic(), now_ms=int(time.time() * 1000))
 
 
 def main() -> None:
@@ -54,10 +52,16 @@ def main() -> None:
         level=os.environ.get("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    model = Model(Path(os.environ.get("MODEL_DIR", "/srv/model")))
+    log.info("model loaded: window=%d samples at %d Hz, labels=%s",
+             model.window, model.rate_hz, model.labels)
+    classifier = Classifier(model, PredictionWriter(os.environ.get("DATABASE_URL", "")))
+
     host = os.environ.get("MQTT_HOST", "mosquitto")
     port = int(os.environ.get("MQTT_PORT", "1883"))
-
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="activity-classifier")
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2, client_id="activity-classifier", userdata=classifier
+    )
     client.username_pw_set(os.environ["MQTT_USERNAME"], os.environ["MQTT_PASSWORD"])
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect

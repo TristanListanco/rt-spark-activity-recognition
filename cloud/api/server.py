@@ -1,7 +1,7 @@
 """Flask Web API for activity predictions (docs/CONTRACTS.md, section 4).
 
-Run in Docker with gunicorn ("server:create_app()"). In M1 the data comes from
-FakeStore; M3 passes a PostgreSQL-backed store with the same methods.
+Run in Docker with gunicorn ("server:create_app()"). Data comes from the
+predictions table that the classifier fills; `/` serves a small live page.
 """
 
 import os
@@ -10,10 +10,11 @@ from collections.abc import Callable
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+import psycopg
 from flask import Flask, abort, jsonify, request
 from werkzeug.exceptions import HTTPException
 
-from fake_data import FakeStore
+from store import PostgresStore
 
 HISTORY_DEFAULT_LIMIT = 50
 HISTORY_MAX_LIMIT = 500
@@ -22,10 +23,15 @@ HISTORY_MAX_LIMIT = 500
 def create_app(store=None, clock: Callable[[], float] = time.time) -> Flask:
     app = Flask(__name__)
     tz = ZoneInfo(os.environ.get("APP_TIMEZONE", "Asia/Manila"))
-    store = store or FakeStore(clock)
+    store = store or PostgresStore(os.environ.get("DATABASE_URL", ""))
+
+    @app.get("/")
+    def index():
+        return app.send_static_file("index.html")
 
     @app.get("/api/health")
     def health():
+        store.ping()
         return {"status": "ok"}
 
     @app.get("/api/latest")
@@ -53,6 +59,11 @@ def create_app(store=None, clock: Callable[[], float] = time.time) -> Flask:
     @app.errorhandler(HTTPException)
     def http_error(error: HTTPException):
         return jsonify(error=error.description), error.code
+
+    @app.errorhandler(psycopg.OperationalError)
+    def database_down(error: psycopg.OperationalError):
+        app.logger.warning("database unavailable: %s", error)
+        return jsonify(error="database unavailable"), 503
 
     return app
 

@@ -1,9 +1,11 @@
 """Publish fake IMU messages in the board's format (docs/CONTRACTS.md, section 3).
 
 Stands in for the RT-Spark board so the cloud stack can be tested without
-hardware. By default it generates synthetic walk/run signals (good enough to
-test the plumbing, not the model). With --csv it replays real rows from the
-Kaggle run-or-walk dataset instead.
+hardware. By default it generates simple but physically plausible walk/run
+signals (gravity included, arm swing at a walking or running pace) that the
+deployed model labels correctly, which makes end-to-end tests meaningful. They
+are far easier than real data, so they say nothing about model accuracy. With
+--csv it replays real rows from the Kaggle run-or-walk dataset instead.
 
 MQTT credentials are read from cloud/.env unless given as options.
 
@@ -38,8 +40,8 @@ SENSOR_COLUMNS = [
 ]
 DATASET_LABELS = {"walk": "0", "run": "1"}
 
-# Synthetic signal per activity: (step frequency in Hz, accel amplitude, gyro amplitude)
-SYNTHETIC = {"walk": (1.8, 0.35, 1.0), "run": (2.8, 1.2, 3.0)}
+# Arm-swing frequency in Hz per activity (see docs/ml-report.md, section 1)
+SWING_HZ = {"walk": 0.9, "run": 1.4}
 
 
 def load_env_file(path: Path) -> None:
@@ -54,15 +56,22 @@ def load_env_file(path: Path) -> None:
 
 
 def synthetic_rows(activity: str, rate: int) -> Iterator[list[float]]:
-    freq, acc_amp, gyro_amp = SYNTHETIC[activity]
+    """[ax, ay, az] in g and [gx, gy, gz] in rad/s, like the dataset.
+
+    walk: arm hangs, so gravity stays on -y; gentle swing.
+    run:  arm bent and swinging hard, so gravity sweeps across y and z; faster rotation.
+    """
+    start = random.uniform(0, 2 * math.pi)
     for n in itertools.count():
-        phase = 2 * math.pi * freq * n / rate
-        yield [
-            round(acc_amp * math.sin(phase + offset) + random.gauss(0, 0.03), 4)
-            for offset in (0.0, 1.0, 2.0)
-        ] + [
-            round(gyro_amp * math.cos(phase + offset) + random.gauss(0, 0.05), 4)
-            for offset in (0.0, 1.0, 2.0)
+        p = 2 * math.pi * SWING_HZ[activity] * n / rate + start
+        if activity == "walk":
+            acc = [0.2 * math.sin(p), -1.0 + 0.25 * math.sin(2 * p), -0.2 + 0.2 * math.cos(p)]
+            gyr = [1.5 * math.sin(p), 0.8 * math.cos(p), 1.2 * math.sin(p + 1)]
+        else:
+            acc = [0.3 * math.sin(p), 0.9 * math.sin(p), -0.4 + 0.6 * math.cos(p)]
+            gyr = [3.0 * math.sin(p), 1.5 * math.cos(p), 2.0 * math.sin(p + 1)]
+        yield [round(a + random.gauss(0, 0.05), 4) for a in acc] + [
+            round(g + random.gauss(0, 0.15), 4) for g in gyr
         ]
 
 

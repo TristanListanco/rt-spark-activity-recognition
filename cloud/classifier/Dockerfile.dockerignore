@@ -1,0 +1,6 @@
+# The build context is the whole repository; send only what the Dockerfile copies.
+*
+!cloud/classifier/*.py
+!cloud/classifier/requirements.txt
+!ml/models/model.onnx
+!ml/models/model_meta.json

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Live Activity</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --page: #f9f9f7;
+      --surface: #fcfcfb;
+      --ink: #0b0b0b;
+      --ink-2: #52514e;
+      --hairline: #e1e0d9;
+      --walk: #2a78d6;
+      --run: #eb6834;
+      --alert-bg: #fdecea;
+      --alert-ink: #8a1c13;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #0d0d0d;
+        --surface: #1a1a19;
+        --ink: #f0efec;
+        --ink-2: #c3c2b7;
+        --hairline: #2c2c2a;
+        --walk: #3987e5;
+        --run: #d95926;
+        --alert-bg: #3a1714;
+        --alert-ink: #ffb4a9;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 40rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    h1 { font-size: 1rem; font-weight: 600; color: var(--ink-2); margin: 0 0 1rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 0 0 0.5rem; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .now { display: flex; align-items: center; gap: 1rem; }
+    .swatch {
+      inline-size: 0.75rem;
+      block-size: 4.5rem;
+      border-radius: 999px;
+      background: var(--hairline);
+      transition: background-color 0.3s;
+    }
+    [data-activity="walk"] .swatch { background: var(--walk); }
+    [data-activity="run"] .swatch { background: var(--run); }
+    .label { font-size: clamp(2.5rem, 12vw, 4.5rem); font-weight: 700; line-height: 1.1; margin: 0; }
+    .meta { color: var(--ink-2); margin: 0.25rem 0 0; }
+    .stale .label { opacity: 0.45; }
+    .alert {
+      background: var(--alert-bg);
+      color: var(--alert-ink);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+    }
+    .alert:empty { display: none; }
+    dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0; }
+    dt { color: var(--ink-2); }
+    dd { margin: 0; font-variant-numeric: tabular-nums; }
+    table { inline-size: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    caption { text-align: start; font-weight: 600; padding-bottom: 0.5rem; }
+    th, td { text-align: start; padding: 0.35rem 0; border-bottom: 1px solid var(--hairline); }
+    th { color: var(--ink-2); font-weight: 500; }
+    td:last-child, th:last-child { text-align: end; }
+    .dot {
+      display: inline-block;
+      inline-size: 0.6rem;
+      block-size: 0.6rem;
+      border-radius: 50%;
+      margin-inline-end: 0.4rem;
+      background: var(--hairline);
+    }
+    .dot.walk { background: var(--walk); }
+    .dot.run { background: var(--run); }
+    .visually-hidden {
+      position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden;
+      clip-path: inset(50%); white-space: nowrap;
+    }
+    @media (prefers-reduced-motion: reduce) { .swatch { transition: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Live activity · <span id="device"></span></h1>
+
+    <div id="alert" class="alert" role="alert"></div>
+
+    <section class="card" id="now" aria-labelledby="now-heading">
+      <h2 id="now-heading" class="visually-hidden">Current activity</h2>
+      <div class="now">
+        <div class="swatch" aria-hidden="true"></div>
+        <div>
+          <p class="label" id="label">—</p>
+          <p class="meta" id="meta">Waiting for the first prediction…</p>
+        </div>
+      </div>
+    </section>
+    <div id="announcer" class="visually-hidden" aria-live="polite"></div>
+
+    <section class="card" aria-labelledby="today-heading">
+      <h2 id="today-heading">Today</h2>
+      <dl>
+        <dt>Walking</dt><dd id="walk-time">—</dd>
+        <dt>Running</dt><dd id="run-time">—</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <table>
+        <caption>Recent predictions</caption>
+        <thead><tr><th scope="col">Time</th><th scope="col">Activity</th><th scope="col">Confidence</th></tr></thead>
+        <tbody id="history"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const DEVICE = new URLSearchParams(location.search).get("device") || "rtspark-01";
+    const NAMES = { walk: "Walking", run: "Running" };
+    const STALE_AFTER_MS = 10_000;
+    const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: "medium" });
+    const $ = (id) => document.getElementById(id);
+
+    let latest = null;          // last prediction received
+    let announced = null;       // last activity announced to screen readers
+    let apiDown = false;
+
+    $("device").textContent = DEVICE;
+
+    async function getJson(path) {
+      const url = `${path}${path.includes("?") ? "&" : "?"}device_id=${encodeURIComponent(DEVICE)}`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(3000), cache: "no-store" });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+      return response.json();
+    }
+
+    function setApiDown(down) {
+      if (down === apiDown) return;   // only announce changes, not every failed poll
+      apiDown = down;
+      $("alert").textContent = down ? "Can't reach the API. Retrying every few seconds…" : "";
+    }
+
+    function ago(ms) {
+      const s = Math.max(0, Math.round(ms / 1000));
+      return s < 60 ? `${s} s ago` : `${Math.floor(s / 60)} min ${s % 60} s ago`;
+    }
+
+    function duration(seconds) {
+      const m = Math.floor(seconds / 60);
+      return m ? `${m} min ${seconds % 60} s` : `${seconds} s`;
+    }
+
+    function renderNow() {
+      const card = $("now");
+      if (!latest) return;
+      const age = Date.now() - latest.ts;
+      const stale = age > STALE_AFTER_MS;
+      card.dataset.activity = latest.activity;
+      card.classList.toggle("stale", stale);
+      $("label").textContent = NAMES[latest.activity] ?? latest.activity;
+      $("meta").textContent = stale
+        ? `No new data for ${ago(age).replace(" ago", "")}. Is the board online?`
+        : `${Math.round(latest.confidence * 100)}% confident · updated ${ago(age)}`;
+      if (!stale && latest.activity !== announced) {
+        announced = latest.activity;
+        $("announcer").textContent = `Now ${NAMES[latest.activity]?.toLowerCase() ?? latest.activity}`;
+      }
+    }
+
+    function renderHistory(rows) {
+      $("history").replaceChildren(...rows.map((row) => {
+        const tr = document.createElement("tr");
+        const time = document.createElement("td");
+        time.textContent = timeFormat.format(row.ts);
+        const activity = document.createElement("td");
+        const dot = document.createElement("span");
+        dot.className = `dot ${row.activity}`;
+        dot.setAttribute("aria-hidden", "true");
+        activity.append(dot, NAMES[row.activity] ?? row.activity);
+        const confidence = document.createElement("td");
+        confidence.textContent = `${Math.round(row.confidence * 100)}%`;
+        tr.append(time, activity, confidence);
+        return tr;
+      }));
+    }
+
+    async function pollLatest() {
+      try {
+        latest = (await getJson("/api/latest")) ?? latest;
+        setApiDown(false);
+      } catch {
+        setApiDown(true);
+      }
+      renderNow();
+    }
+
+    async function pollDetails() {
+      try {
+        const [history, summary] = await Promise.all([
+          getJson("/api/history?limit=10"),
+          getJson("/api/summary"),
+        ]);
+        renderHistory(history ?? []);
+        $("walk-time").textContent = duration(summary.seconds.walk ?? 0);
+        $("run-time").textContent = duration(summary.seconds.run ?? 0);
+      } catch {
+        setApiDown(true);
+      }
+    }
+
+    // setTimeout loops instead of setInterval, so a slow request never overlaps the next one.
+    // Polling pauses while the tab is hidden.
+    function loop(fn, everyMs) {
+      const tick = async () => {
+        if (!document.hidden) await fn();
+        setTimeout(tick, everyMs);
+      };
+      tick();
+    }
+    loop(pollLatest, 1000);
+    loop(pollDetails, 5000);
+  </script>
+</body>
+</html>
