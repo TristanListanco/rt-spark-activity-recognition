@@ -21,6 +21,7 @@
 #include <rtdbg.h>
 
 #define WIFI_RETRY_MS     5000
+#define WIFI_ROAM_AFTER_MS 20000 /* look for another known network after this long without Wi-Fi */
 #define NTP_RETRY_MS      60000
 #define MQTT_BUF_SIZE     1024
 
@@ -118,11 +119,45 @@ static void on_message(MQTTClient *c, MessageData *msg)
     /* messages on topics we did not subscribe to are ignored */
 }
 
+/* The broker for the network we're on; Paho re-reads client.uri on every (re)connect. */
+static void set_broker_uri(void)
+{
+    rt_snprintf(uri, sizeof(uri), "tcp://%s:%d", joined->broker, MQTT_PORT);
+}
+
+/*
+ * Walked out of range (e.g. left home with the hotspot in a pocket): after a while
+ * without Wi-Fi, give up on that network and try the whole list again.
+ */
+static void roam_if_wifi_lost(rt_tick_t *lost_since)
+{
+    if (rt_wlan_is_ready())
+    {
+        *lost_since = 0;
+        return;
+    }
+    if (*lost_since == 0)
+    {
+        *lost_since = rt_tick_get();
+        return;
+    }
+    if (rt_tick_get() - *lost_since < rt_tick_from_millisecond(WIFI_ROAM_AFTER_MS))
+        return;
+
+    LOG_W("no Wi-Fi for %d s on \"%s\"; trying the known networks again",
+          WIFI_ROAM_AFTER_MS / 1000, joined->ssid);
+    rt_wlan_disconnect();
+    joined = RT_NULL;
+    wifi_connect();
+    set_broker_uri(); /* the MQTT client reconnects to this on its own */
+    *lost_since = 0;
+}
+
 static rt_err_t mqtt_start(void)
 {
     MQTTPacket_connectData condata = MQTTPacket_connectData_initializer;
 
-    rt_snprintf(uri, sizeof(uri), "tcp://%s:%d", joined->broker, MQTT_PORT);
+    set_broker_uri();
     rt_memset(&client, 0, sizeof(client));
     client.uri = uri;
     rt_memcpy(&client.condata, &condata, sizeof(condata));
@@ -155,6 +190,7 @@ static void net_entry(void *parameter)
 {
     struct imu_batch batch;
     rt_tick_t last_ntp_try;
+    rt_tick_t wifi_lost_since = 0;
 
     wifi_connect();
     clock_sync();
@@ -167,6 +203,7 @@ static void net_entry(void *parameter)
         if (rt_mq_recv(batches, &batch, sizeof(batch), RT_WAITING_FOREVER) != sizeof(batch))
             continue;
 
+        roam_if_wifi_lost(&wifi_lost_since);
         if (!clock_is_synced() && rt_tick_get() - last_ntp_try > rt_tick_from_millisecond(NTP_RETRY_MS))
         {
             clock_sync();
@@ -178,7 +215,7 @@ static void net_entry(void *parameter)
             continue;
         }
         if (payload_format(json, sizeof(json), DEVICE_ID, batch.ts_ms, IMU_RATE_HZ,
-                           (const float (*)[6])batch.samples, IMU_RATE_HZ) < 0)
+                           (const float (*)[6])batch.samples, IMU_RATE_HZ, batch.label) < 0)
         {
             LOG_E("message does not fit the buffer");
             continue;

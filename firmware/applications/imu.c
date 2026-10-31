@@ -3,6 +3,7 @@
 #include <icm20608.h>
 
 #include "clock.h"
+#include "label.h"
 
 #define DBG_TAG "imu"
 #define DBG_LVL DBG_INFO
@@ -56,7 +57,10 @@ static void sampler_entry(void *parameter)
     for (;;)
     {
         if (count == 0)
+        {
             batch.ts_ms = clock_now_ms();
+            batch.label = label_current();
+        }
         if (read_sample(batch.samples[count]) == RT_EOK)
         {
             rt_base_t level = rt_hw_interrupt_disable();

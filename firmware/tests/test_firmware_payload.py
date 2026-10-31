@@ -78,6 +78,14 @@ def test_unsynced_clock_sends_ts_zero(results):
     assert parse_imu_message(TOPIC, results[1][1].encode()).ts == 0
 
 
+def test_label_is_added_while_recording(results):
+    length, text = results[4]
+    assert length == len(text)
+    assert '"rate_hz":5,"label":"run","samples"' in text
+    assert parse_imu_message(TOPIC, text.encode()).rate_hz == 5  # the classifier ignores it
+    assert '"label"' not in results[0][1]  # absent when not recording
+
+
 def test_buffer_boundaries(results):
     full_length = results[0][0]
     assert results[2] == (full_length, results[0][1])  # exact fit works

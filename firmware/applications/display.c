@@ -1,7 +1,8 @@
 /*
  * Screen layout (240 x 240):
  *
- *   rtspark-01             13:45:07     header: device and local time (NTP)
+ *   rtspark-01             13:45:07     header: device and local time (NTP);
+ *                                       "REC WALK" etc. while recording training data
  *   ┌──────────────────────────────┐
  *   │           RUNNING            │    the cloud's latest prediction, coloured
  *   │        97% confident         │    blue (walk) / orange (run); grey if none
@@ -28,6 +29,7 @@
 #include "app_config.h"
 #include "clock.h"
 #include "imu.h"
+#include "label.h"
 #include "net.h"
 
 #define DBG_TAG "display"
@@ -135,8 +137,21 @@ static void draw_header(void)
         uint32_t s = (uint32_t)((now / 1000 + LOCAL_UTC_OFFSET_MIN * 60) % 86400);
         rt_snprintf(clock_text, sizeof(clock_text), "%02u:%02u:%02u", s / 3600, s / 60 % 60, s % 60);
     }
-    lcd_set_color(C_BG, C_INK2);
-    lcd_show_string(MARGIN, 6, FONT_S, "%s", DEVICE_ID);
+    const char *label = label_current();
+    if (label != RT_NULL)
+    {
+        /* recording training data (label.c): make it impossible to miss */
+        rt_uint16_t colour = rt_strcmp(label, "run") == 0 ? C_RUN : rt_strcmp(label, "walk") == 0 ? C_WALK : C_INK;
+        lcd_set_color(C_BG, colour);
+        lcd_show_string(MARGIN, 6, FONT_S, "REC %-8s", rt_strcmp(label, "walk") == 0 ? "WALK"
+                                                       : rt_strcmp(label, "run") == 0  ? "RUN"
+                                                                                        : "IDLE");
+    }
+    else
+    {
+        lcd_set_color(C_BG, C_INK2);
+        lcd_show_string(MARGIN, 6, FONT_S, "%-12s", DEVICE_ID);
+    }
     lcd_set_color(C_BG, C_INK);
     lcd_show_string(LCD_W - MARGIN - 8 * 8, 6, FONT_S, "%s", clock_text);
 }

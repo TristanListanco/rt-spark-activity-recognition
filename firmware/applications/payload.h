@@ -1,6 +1,7 @@
 /*
  * Builds the JSON message from docs/CONTRACTS.md, section 3:
  *   {"device_id":"rtspark-01","ts":<unix ms>,"rate_hz":5,"samples":[[ax,ay,az,gx,gy,gz],...]}
+ * plus "label":"walk" (etc.) while recording training data with the board's buttons.
  *
  * Plain C with no RT-Thread or printf dependency (RT-Thread's printf cannot
  * print floats), so it is also compiled and tested on the host
@@ -14,11 +15,11 @@
 
 /*
  * Writes the message into buf (always NUL-terminated when size > 0).
- * Values are written with 4 decimal places. Returns the length written, or -1
- * if buf is too small.
+ * Values are written with 4 decimal places. `label` is NULL except while recording.
+ * Returns the length written, or -1 if buf is too small.
  */
 int payload_format(char *buf, size_t size, const char *device_id, uint64_t ts_ms,
-                   int rate_hz, const float (*samples)[6], int count);
+                   int rate_hz, const float (*samples)[6], int count, const char *label);
 
 /*
  * Reads the classifier's prediction message (docs/CONTRACTS.md, section 3):

@@ -3,7 +3,7 @@
 The formats each part of the system relies on: firmware → MQTT → classifier → database → API → app.
 If you change anything here, update every consumer in the same commit, bump the version, and add a line to the changelog at the bottom.
 
-Version: **0.7**
+Version: **0.8**
 
 Values marked **provisional** are checked during the ML step (M2) and then finalized.
 
@@ -63,6 +63,7 @@ Payload (JSON, one message per second, containing the last `R` samples):
 - `ts`: Unix time in **milliseconds** of the **first** sample in the batch. If the board has no NTP time, it sends `0`, and the classifier uses the time the message arrived.
 - `rate_hz`: the actual sample rate.
 - `samples`: length = `rate_hz`; each entry = `[ax, ay, az, gx, gy, gz]` in the units from section 2.
+- `label` (optional): `walk`, `run` or `idle`, present only while recording training data with the board's buttons (`firmware/applications/label.c`). The classifier ignores it; `tools/record.py` saves labelled samples.
 
 ### Predictions back to the board (classifier → board)
 
@@ -165,3 +166,4 @@ CREATE INDEX predictions_device_ts ON predictions (device_id, ts DESC);
 | 0.5 | 2026-10-31 | M3: classifier behaviour section, 503 on database outage, meaning of `ts` and `seconds`, web page at `/` |
 | 0.6 | 2026-10-31 | M4: board publishes with QoS 1 (the only QoS RT-Thread's Paho port supports) |
 | 0.7 | 2026-10-31 | Predictions published back to the board on `activity/<device_id>/prediction`, for its LCD |
+| 0.8 | 2026-11-01 | Optional `label` field while recording training data (M7) |

@@ -57,7 +57,7 @@ static void put_fixed4(struct writer *w, float v)
 }
 
 int payload_format(char *buf, size_t size, const char *device_id, uint64_t ts_ms,
-                   int rate_hz, const float (*samples)[6], int count)
+                   int rate_hz, const float (*samples)[6], int count, const char *label)
 {
     struct writer w = {buf, size, size > 0};
     int i, j;
@@ -68,6 +68,12 @@ int payload_format(char *buf, size_t size, const char *device_id, uint64_t ts_ms
     put_u64(&w, ts_ms);
     put_str(&w, ",\"rate_hz\":");
     put_u64(&w, (uint64_t)rate_hz);
+    if (label != NULL)
+    {
+        put_str(&w, ",\"label\":\"");
+        put_str(&w, label);
+        put_str(&w, "\"");
+    }
     put_str(&w, ",\"samples\":[");
     for (i = 0; i < count; i++)
     {

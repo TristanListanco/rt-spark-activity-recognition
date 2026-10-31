@@ -8,6 +8,8 @@
  * message queue.
  *
  * The LCD shows the cloud's latest prediction and the board's status (display.c).
+ * The buttons label training data while recording (label.c: LEFT walk, RIGHT run,
+ * UP idle, DOWN stop).
  * LEDs: blue blinks once a second while the firmware runs; red is lit while the
  * board is NOT connected to the MQTT broker.
  */
@@ -18,6 +20,7 @@
 
 #include "display.h"
 #include "imu.h"
+#include "label.h"
 #include "net.h"
 
 #define DBG_TAG "main"
@@ -26,7 +29,7 @@
 
 #define LED_BLUE   GET_PIN(F, 11)
 #define LED_RED    GET_PIN(F, 12)
-#define LED_ON     PIN_LOW /* assumed active-low; swap with LED_OFF if the LEDs look inverted */
+#define LED_ON     PIN_LOW /* active-low (as in RT-Thread's RT-Spark SDK examples) */
 #define LED_OFF    PIN_HIGH
 #define QUEUE_LEN  4       /* seconds of data buffered while the network catches up */
 
@@ -34,10 +37,12 @@ int main(void)
 {
     rt_mq_t queue;
     int blue = LED_OFF;
+    int tick = 0;
 
     rt_pin_mode(LED_BLUE, PIN_MODE_OUTPUT);
     rt_pin_mode(LED_RED, PIN_MODE_OUTPUT);
     rt_pin_write(LED_RED, LED_ON);
+    label_init();
 
     if (display_start() != RT_EOK) /* first, so the screen shows progress during start-up */
         LOG_W("display not started; continuing without it");
@@ -55,11 +60,15 @@ int main(void)
         }
     }
 
-    for (;;)
+    for (;;) /* 50 ms tick: buttons every tick, LEDs every 500 ms */
     {
-        blue = (blue == LED_ON) ? LED_OFF : LED_ON;
-        rt_pin_write(LED_BLUE, blue);
-        rt_pin_write(LED_RED, net_is_online() ? LED_OFF : LED_ON);
-        rt_thread_mdelay(500);
+        label_poll();
+        if (++tick % 10 == 0)
+        {
+            blue = (blue == LED_ON) ? LED_OFF : LED_ON;
+            rt_pin_write(LED_BLUE, blue);
+            rt_pin_write(LED_RED, net_is_online() ? LED_OFF : LED_ON);
+        }
+        rt_thread_mdelay(50);
     }
 }

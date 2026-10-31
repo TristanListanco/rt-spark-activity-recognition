@@ -35,19 +35,23 @@ int main(int argc, char **argv)
         return parse_mode(argv[2]);
 
     /* 1: a normal message */
-    full = payload_format(buf, sizeof(buf), "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5);
+    full = payload_format(buf, sizeof(buf), "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5, NULL);
     printf("%d %s\n", full, buf);
 
     /* 2: clock not synced yet → ts 0 */
-    n = payload_format(buf, sizeof(buf), "rtspark-01", 0, 5, SAMPLES, 5);
+    n = payload_format(buf, sizeof(buf), "rtspark-01", 0, 5, SAMPLES, 5, NULL);
     printf("%d %s\n", n, buf);
 
     /* 3: exactly enough room (length + NUL) */
-    n = payload_format(buf, (size_t)full + 1, "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5);
+    n = payload_format(buf, (size_t)full + 1, "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5, NULL);
     printf("%d %s\n", n, buf);
 
     /* 4: one byte short → -1 and an empty string */
-    n = payload_format(buf, (size_t)full, "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5);
+    n = payload_format(buf, (size_t)full, "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5, NULL);
+    printf("%d %s\n", n, buf);
+
+    /* 5: while recording training data, with a label */
+    n = payload_format(buf, sizeof(buf), "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5, "run");
     printf("%d %s\n", n, buf);
     return 0;
 }

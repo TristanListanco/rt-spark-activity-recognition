@@ -21,7 +21,8 @@ The rest (the RT-Thread kernel, the STM32 HAL, the RW007, ICM-20608, Paho MQTT a
 
 | File | Job |
 |---|---|
-| `main.c` | Starts the display, IMU and network threads (IMU and network are connected by a message queue); drives the LEDs |
+| `main.c` | Starts the display, IMU and network threads (IMU and network are connected by a message queue); drives the LEDs; polls the buttons |
+| `label.c` | Recording labels from the buttons (see below). Command `rec` |
 | `imu.c` | Samples the ICM-20608 every 200 ms on a fixed tick grid (±8 g, ±1000 °/s) and converts to g (gravity included) and rad/s; sends one batch of 5 samples per second. Command `imu_read` |
 | `net.c` | Joins Wi-Fi (auto-reconnect), syncs the clock with NTP, runs the Paho MQTT client (auto-reconnect), publishes each batch to `activity/rtspark-01/imu`, and subscribes to `activity/rtspark-01/prediction`. Command `app_status` |
 | `display.c` | Draws the status screen on the 240x240 LCD twice a second (see below) |
@@ -86,6 +87,19 @@ Serial console commands (115200 baud):
 - `app_status`: Wi-Fi, IP address, MQTT state, clock, messages sent / skipped / failed, and the last prediction from the cloud
 - `imu_read`: the last second of samples in milli-g and milli-rad/s. Lying still, the magnitude should be about 1000 mg (gravity)
 - `wifi scan`, `ifconfig`, `ping <host>`: standard RT-Thread network commands
+
+## Recording training data (M7)
+
+The buttons label what you're doing, and every message carries that label until you stop:
+
+| Button | Label | Screen header |
+|---|---|---|
+| LEFT | walk | REC WALK (blue) |
+| RIGHT | run | REC RUN (orange) |
+| UP | idle (standing still) | REC IDLE |
+| DOWN | stop recording | device name |
+
+On a computer, `tools/record.py --host <broker>` saves every labelled sample to `ml/data/own/*.csv` (git-ignored). Over serial, `rec walk` / `rec stop` does the same without the buttons. If Wi-Fi is gone for 20 s (e.g. you walk out of range of home Wi-Fi), the board tries its other known networks, so a phone hotspot in your pocket takes over.
 
 ## Troubleshooting
 

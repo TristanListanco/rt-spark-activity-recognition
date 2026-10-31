@@ -9,7 +9,8 @@
 
 struct imu_batch
 {
-    uint64_t ts_ms; /* Unix ms of the first sample, 0 if the clock is not synced yet */
+    uint64_t ts_ms;    /* Unix ms of the first sample, 0 if the clock is not synced yet */
+    const char *label; /* recording label when the first sample was taken (label.h), or RT_NULL */
     float samples[IMU_RATE_HZ][IMU_AXES];
 };
 
