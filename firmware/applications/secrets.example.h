@@ -5,15 +5,19 @@
 #ifndef SECRETS_H
 #define SECRETS_H
 
-/* A 2.4 GHz network that gives out IPv4 addresses (e.g. a phone hotspot). */
-#define WIFI_SSID      "your-wifi-name"
-#define WIFI_PASSWORD  "your-wifi-password"
+/*
+ * Known Wi-Fi networks, tried in this order at boot; the first one in range is used,
+ * together with its broker address (the computer running the MQTT broker on that
+ * network, e.g. your Mac's IP there; later the Azure VM). A hostname also works.
+ * Networks must be 2.4 GHz and hand out IPv4 addresses (firmware/README.md).
+ * Copy SSIDs exactly: iPhone hotspots use a curly apostrophe (Tristan’s iPhone).
+ */
+#define WIFI_NETWORKS                                                     \
+    {"your-home-wifi", "your-home-wifi-password", "192.168.1.10"},        \
+    {"your-phone-hotspot", "your-hotspot-password", "172.20.10.2"},
 
-/* The MQTT broker: your Mac's IP on that network for now, the Azure VM later.
- * A hostname also works. Username and password are the ones in cloud/.env. */
-#define MQTT_HOST      "192.168.1.10"
 #define MQTT_PORT      1883
-#define MQTT_USERNAME  "device"
-#define MQTT_PASSWORD  "change-me"
+#define MQTT_USERNAME  "device"    /* from cloud/.env */
+#define MQTT_PASSWORD  "change-me" /* from cloud/.env */
 
 #endif /* SECRETS_H */

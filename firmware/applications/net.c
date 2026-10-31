@@ -24,6 +24,22 @@
 #define NTP_RETRY_MS      60000
 #define MQTT_BUF_SIZE     1024
 
+/* Known networks, each with the broker address to use there (secrets.h). */
+struct wifi_network
+{
+    const char *ssid;
+    const char *password;
+    const char *broker;
+};
+
+#ifdef WIFI_NETWORKS
+static const struct wifi_network networks[] = {WIFI_NETWORKS};
+#else /* older secrets.h with a single network */
+static const struct wifi_network networks[] = {{WIFI_SSID, WIFI_PASSWORD, MQTT_HOST}};
+#endif
+#define NETWORK_COUNT (sizeof(networks) / sizeof(networks[0]))
+
+static const struct wifi_network *joined; /* the network in use, RT_NULL until joined */
 static rt_mq_t batches;
 static MQTTClient client;
 static char uri[96];
@@ -39,18 +55,27 @@ static struct
     rt_tick_t received;
 } prediction;
 
+/* Try the known networks in order until one accepts us; it decides the broker address. */
 static void wifi_connect(void)
 {
+    rt_size_t i;
+
     rt_wlan_set_mode(RT_WLAN_DEVICE_STA_NAME, RT_WLAN_STATION);
     rt_wlan_config_autoreconnect(RT_TRUE); /* the WLAN framework rejoins after drops */
 
-    for (;;)
+    while (joined == RT_NULL)
     {
-        LOG_I("joining Wi-Fi \"%s\"", WIFI_SSID);
-        if (rt_wlan_connect(WIFI_SSID, WIFI_PASSWORD) == RT_EOK)
-            break;
-        LOG_W("Wi-Fi join failed; retrying in %d s", WIFI_RETRY_MS / 1000);
-        rt_thread_mdelay(WIFI_RETRY_MS);
+        for (i = 0; i < NETWORK_COUNT && joined == RT_NULL; i++)
+        {
+            LOG_I("joining Wi-Fi \"%s\"", networks[i].ssid);
+            if (rt_wlan_connect(networks[i].ssid, networks[i].password) == RT_EOK)
+                joined = &networks[i];
+        }
+        if (joined == RT_NULL)
+        {
+            LOG_W("no known Wi-Fi network joined; retrying in %d s", WIFI_RETRY_MS / 1000);
+            rt_thread_mdelay(WIFI_RETRY_MS);
+        }
     }
     while (!rt_wlan_is_ready()) /* wait for a DHCP address */
         rt_thread_mdelay(200);
@@ -97,7 +122,7 @@ static rt_err_t mqtt_start(void)
 {
     MQTTPacket_connectData condata = MQTTPacket_connectData_initializer;
 
-    rt_snprintf(uri, sizeof(uri), "tcp://%s:%d", MQTT_HOST, MQTT_PORT);
+    rt_snprintf(uri, sizeof(uri), "tcp://%s:%d", joined->broker, MQTT_PORT);
     rt_memset(&client, 0, sizeof(client));
     client.uri = uri;
     rt_memcpy(&client.condata, &condata, sizeof(condata));
@@ -189,6 +214,7 @@ void net_get_status(struct net_status *out)
 
     rt_memset(out, 0, sizeof(*out));
     out->wifi_up = rt_wlan_is_ready();
+    out->ssid = joined != RT_NULL ? joined->ssid : RT_NULL;
     if (out->wifi_up && netdev_default != RT_NULL)
         inet_ntoa_r(netdev_default->ip_addr, out->ip, sizeof(out->ip));
     out->mqtt_online = net_is_online();
@@ -213,6 +239,8 @@ static void app_status(void)
 {
     rt_kprintf("device   : %s\n", DEVICE_ID);
     rt_kprintf("wifi     : %s", rt_wlan_is_ready() ? "connected" : "not connected");
+    if (joined != RT_NULL)
+        rt_kprintf(" to \"%s\"", joined->ssid);
     if (rt_wlan_is_ready() && netdev_default != RT_NULL)
         rt_kprintf(" (IP %s)", inet_ntoa(netdev_default->ip_addr));
     rt_kprintf("\nmqtt     : %s (%s)\n", client.isconnected ? "connected" : "not connected", uri);

@@ -143,7 +143,7 @@ A native Android app (Kotlin, Jetpack Compose, Material 3) that polls the API wi
 
 - **Live:** the current activity in a large card (blue for walking, orange for running, grey when no data has arrived for 10 s), its confidence and age, and today's walking/running time with a proportional bar. It polls `/api/latest` every second while visible and stops when the app is in the background.
 - **History:** the API's one-prediction-per-second records merged into stretches ("Running · 20:50:41 – 20:51:01 · 21 s · 99%"). Pull to refresh; older pages load as you scroll (`before=` paging).
-- **Settings:** API address and device ID, saved on the phone, with **Test connection** (`/api/health`). The default is `http://10.0.2.2:8000` on the emulator (the computer running it) and `http://172.20.10.2:8000` on a real phone on the iPhone hotspot.
+- **Settings:** API address and device ID, saved on the phone, with **Test connection** (`/api/health`). The default is `http://10.0.2.2:8000` on the emulator (the computer running it) and `http://172.20.10.2:8000` on a real phone on the iPhone hotspot. On another network, enter the Mac's address there (e.g. `http://192.168.1.44:8000` at home).
 
 ```bash
 cd app

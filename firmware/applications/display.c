@@ -6,7 +6,8 @@
  *   │           RUNNING            │    the cloud's latest prediction, coloured
  *   │        97% confident         │    blue (walk) / orange (run); grey if none
  *   └──────────────────────────────┘    has arrived for 5 s
- *   Wi-Fi  172.20.10.3
+ *   Wi-Fi  HomeWiFi
+ *   IP     192.168.1.50
  *   MQTT   online
  *   Sent   1234   failed 0
  *   IMU    |a| 1.01g |w| 0.03
@@ -44,7 +45,7 @@
 #define PANEL_BOT   120
 #define TITLE_Y     (PANEL_TOP + 14)
 #define SUBTITLE_Y  (PANEL_TOP + 56)
-#define ROW_Y(i)    (130 + 22 * (i))
+#define ROW_Y(i)    (128 + 18 * (i)) /* six 16 px rows */
 
 /* The project's chart palette (dark-mode steps, docs/ml figures and the web page), RGB565 */
 #define C_BG    0x18C3 /* #1a1a19 surface */
@@ -93,6 +94,29 @@ static void draw_row(int index, rt_uint16_t colour, const char *label, const cha
     pad(line, text, RT_FALSE);
     lcd_set_color(C_BG, colour);
     lcd_show_string(MARGIN, ROW_Y(index), FONT_S, "%s", line);
+}
+
+/* The LCD font is ASCII only: keep ASCII, show curly quotes (as in iOS hotspot names,
+ * "Tristan’s iPhone") as ', and anything else non-ASCII as ?. */
+static void ascii_copy(char *out, rt_size_t size, const char *utf8)
+{
+    rt_size_t n = 0;
+    const unsigned char *p = (const unsigned char *)utf8;
+    while (*p && n + 1 < size)
+    {
+        if (*p < 0x80)
+        {
+            out[n++] = (char)*p++;
+            continue;
+        }
+        if (p[0] == 0xE2 && p[1] == 0x80 && (p[2] == 0x98 || p[2] == 0x99))
+            out[n++] = '\'';
+        else
+            out[n++] = '?';
+        for (p++; (*p & 0xC0) == 0x80; p++) /* skip continuation bytes */
+            ;
+    }
+    out[n] = '\0';
 }
 
 /* v >= 0 with two decimals, e.g. "1.01" (rt_snprintf has no %f) */
@@ -176,25 +200,30 @@ static void draw_status(const struct net_status *st)
     char value[COLS + 1], a[8], w[8];
     float s[IMU_AXES];
 
-    draw_row(0, st->wifi_up ? C_GOOD : C_BAD, "Wi-Fi  ", st->wifi_up ? st->ip : "joining...");
-    draw_row(1, st->mqtt_online ? C_GOOD : C_BAD, "MQTT   ", st->mqtt_online ? "online" : "offline");
+    if (st->wifi_up && st->ssid != RT_NULL)
+        ascii_copy(value, sizeof(value), st->ssid);
+    else
+        rt_strncpy(value, "joining...", sizeof(value));
+    draw_row(0, st->wifi_up ? C_GOOD : C_BAD, "Wi-Fi  ", value);
+    draw_row(1, C_INK2, "IP     ", st->ip[0] ? st->ip : "-");
+    draw_row(2, st->mqtt_online ? C_GOOD : C_BAD, "MQTT   ", st->mqtt_online ? "online" : "offline");
 
     rt_snprintf(value, sizeof(value), "%u   failed %u", st->sent, st->failed);
-    draw_row(2, st->failed ? C_BAD : C_INK, "Sent   ", value);
+    draw_row(3, st->failed ? C_BAD : C_INK, "Sent   ", value);
 
     if (imu_get_latest(s))
     {
         fmt2(a, sizeof(a), sqrtf(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]));
         fmt2(w, sizeof(w), sqrtf(s[3] * s[3] + s[4] * s[4] + s[5] * s[5]));
         rt_snprintf(value, sizeof(value), "|a| %sg |w| %s", a, w);
-        draw_row(3, C_INK, "IMU    ", value);
+        draw_row(4, C_INK, "IMU    ", value);
     }
     else
     {
-        draw_row(3, C_BAD, "IMU    ", "no data");
+        draw_row(4, C_BAD, "IMU    ", "no data");
     }
 
-    draw_row(4, C_INK2, "Broker ", st->broker ? st->broker : "");
+    draw_row(5, C_INK2, "Broker ", st->broker ? st->broker : "");
 }
 
 static void display_entry(void *parameter)

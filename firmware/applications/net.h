@@ -8,6 +8,7 @@
 struct net_status
 {
     rt_bool_t wifi_up;
+    const char *ssid;           /* network joined (UTF-8), RT_NULL while joining */
     char ip[16];                /* "" until DHCP gives an address */
     rt_bool_t mqtt_online;
     const char *broker;         /* "host:port" */

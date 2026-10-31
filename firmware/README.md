@@ -35,10 +35,18 @@ The rest (the RT-Thread kernel, the STM32 HAL, the RW007, ICM-20608, Paho MQTT a
 You need the Arm GCC toolchain. The script finds PlatformIO's GCC 14 automatically (see the repository README for installing it), or set `RTT_EXEC_PATH`.
 
 ```bash
-cp firmware/applications/secrets.example.h firmware/applications/secrets.h   # then edit it
+cp firmware/applications/secrets.example.h firmware/applications/secrets.h   # then edit it (below)
 firmware/build.sh            # build → firmware/out/rtthread.bin
 firmware/build.sh flash      # build, then flash through the on-board ST-Link (OpenOCD)
 pio device monitor -p /dev/cu.usbmodem* -b 115200                           # serial console
+```
+
+`secrets.h` lists the Wi-Fi networks the board knows. Each entry has a name, a password, and **the broker address to use on that network**: the Mac's IP there, or later the Azure VM. At boot the board tries them in order and uses the first one in range, so moving between home and the hotspot doesn't need a reflash:
+
+```c
+#define WIFI_NETWORKS \
+    {"PLDTHOMEFIBRxxxxx", "home-password", "192.168.1.44"}, /* router's 2.4 GHz name */ \
+    {"Tristan’s iPhone 15 Pro Max", "hotspot-password", "172.20.10.2"},
 ```
 
 The first run downloads RT-Thread (sparse, only this board) and the packages. To reuse an existing RT-Thread checkout, which must be at the pinned commit, set `RTT_DIR=/path/to/rt-thread`.
@@ -55,11 +63,12 @@ rtspark-01             13:45:07     device and local time (NTP, UTC+8)
 │           RUNNING            │    the cloud's latest prediction: blue = walking,
 │        97% confident         │    orange = running, grey = none in the last 5 s
 └──────────────────────────────┘
-Wi-Fi  172.20.10.3                  green when connected, red while joining
+Wi-Fi  PLDTHOMEFIBR0a448            network joined (green), or "joining..." (red)
+IP     192.168.1.48                 the board's address on it
 MQTT   online                       green when connected to the broker
 Sent   1234   failed 0              messages published (red if any failed)
 IMU    |a| 1.01g |w| 0.03           live magnitude: ~1 g and ~0 rad/s when still
-Broker 172.20.10.2:1883
+Broker 192.168.1.44:1883             the broker for this network
 ```
 
 The prediction comes back from the classifier on `activity/rtspark-01/prediction` about a second after each message. "WAITING" means none has arrived yet. A grey panel with "no update for N s" means the board or the cloud stopped. The colours are the project's chart palette.
@@ -85,6 +94,8 @@ Problems hit while bringing the board up, and their fixes:
 | Symptom | Cause | Fix |
 |---|---|---|
 | Boots to `msh />` but no `imu`/`net` log lines; `ifconfig` finds no interface | The RW007 driver waits forever at boot for the module's ready pin. The rw007 package's generic pin defaults (e.g. RST = 187, which doesn't exist on this chip) had overridden the board's | The correct RT-Spark pins are set explicitly in `tools/firmware_config.py` (CS 90, INT 107, RST 111) |
+| Screen says Wi-Fi connected but **MQTT offline** | The broker isn't at that network's address, usually because the Mac moved to another network (e.g. hotspot → home) or got a new IP | Put the board and the Mac on the same network, and make sure that network's entry in `secrets.h` has the Mac's current IP. The screen shows the network and broker the board is using |
+| Home router not found although the Mac is on it | Dual-band routers broadcast a separate 5 GHz name (e.g. `PLDTHOMEFIBR5Gxxxxx`), which the RW007 can't see | Use the 2.4 GHz name (here `PLDTHOMEFIBR0a448`, same suffix without "5G"); `wifi scan` lists it. The board on 2.4 GHz still reaches a Mac on 5 GHz of the same router |
 | `not find ap!` when joining | The network isn't visible on 2.4 GHz, or the SSID differs byte for byte | iPhone hotspot: turn on **Maximize Compatibility** (2.4 GHz) and **Allow Others to Join**. iOS names use a curly apostrophe (`Tristan’s`), so copy it exactly. `wifi scan` on the board shows what it can see |
 | Board gets an IP but can't reach the broker on the Mac | The hotspot is "IPv6-only preferred" (RFC 8925): macOS skips IPv4 there, while the board still gets IPv4 | Make the Mac take IPv4: `networksetup -setv6LinkLocal Wi-Fi` (undo later with `networksetup -setv6automatic Wi-Fi`). The Mac then gets a `172.20.10.x` address to put in `MQTT_HOST` |
 | `Not support Qos0 config, only support Qos1` | RT-Thread's Paho port only publishes with QoS 1 | The firmware uses QoS 1 (contract v0.6) |
