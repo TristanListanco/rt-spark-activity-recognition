@@ -20,4 +20,14 @@
 int payload_format(char *buf, size_t size, const char *device_id, uint64_t ts_ms,
                    int rate_hz, const float (*samples)[6], int count);
 
+/*
+ * Reads the classifier's prediction message (docs/CONTRACTS.md, section 3):
+ *   {"activity":"run","confidence":0.9735,"ts":1761800000123}
+ * `json` need not be NUL-terminated (MQTT payloads aren't). On success writes the
+ * label into `activity` and the confidence as a rounded percentage, and returns 0;
+ * returns -1 if a field is missing or malformed.
+ */
+int prediction_parse(const char *json, size_t len, char *activity, size_t activity_size,
+                     int *confidence_pct);
+
 #endif /* PAYLOAD_H */

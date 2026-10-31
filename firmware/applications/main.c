@@ -7,6 +7,7 @@
  * disturbs the 5 Hz timing; batches travel to the network thread through a
  * message queue.
  *
+ * The LCD shows the cloud's latest prediction and the board's status (display.c).
  * LEDs: blue blinks once a second while the firmware runs; red is lit while the
  * board is NOT connected to the MQTT broker.
  */
@@ -15,6 +16,7 @@
 #include <rtdevice.h>
 #include <rtthread.h>
 
+#include "display.h"
 #include "imu.h"
 #include "net.h"
 
@@ -36,6 +38,9 @@ int main(void)
     rt_pin_mode(LED_BLUE, PIN_MODE_OUTPUT);
     rt_pin_mode(LED_RED, PIN_MODE_OUTPUT);
     rt_pin_write(LED_RED, LED_ON);
+
+    if (display_start() != RT_EOK) /* first, so the screen shows progress during start-up */
+        LOG_W("display not started; continuing without it");
 
     queue = rt_mq_create("imu", sizeof(struct imu_batch), QUEUE_LEN, RT_IPC_FLAG_FIFO);
     if (queue == RT_NULL || imu_start(queue) != RT_EOK || net_start(queue) != RT_EOK)

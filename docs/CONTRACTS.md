@@ -3,7 +3,7 @@
 The formats each part of the system relies on: firmware → MQTT → classifier → database → API → app.
 If you change anything here, update every consumer in the same commit, bump the version, and add a line to the changelog at the bottom.
 
-Version: **0.6**
+Version: **0.7**
 
 Values marked **provisional** are checked during the ML step (M2) and then finalized.
 
@@ -64,6 +64,21 @@ Payload (JSON, one message per second, containing the last `R` samples):
 - `rate_hz`: the actual sample rate.
 - `samples`: length = `rate_hz`; each entry = `[ax, ay, az, gx, gy, gz]` in the units from section 2.
 
+### Predictions back to the board (classifier → board)
+
+After storing each prediction, the classifier also publishes it, so the board can show it on its LCD.
+
+| Field | Value |
+|---|---|
+| Topic | `activity/<device_id>/prediction`, e.g. `activity/rtspark-01/prediction` |
+| QoS | `0`, not retained (a new one arrives every second) |
+
+```json
+{ "activity": "run", "confidence": 0.9735, "ts": 1760000000000 }
+```
+
+Compact JSON (no spaces), produced by `prediction_message()` in `cloud/classifier/pipeline.py`. `ts` has the same meaning as in the API's `/api/latest`. The firmware parses it with `prediction_parse()` in `firmware/applications/payload.c`, and a host test checks the two against each other.
+
 ## 4. Web API (cloud → app)
 
 Base URL: `http://<host>:8000` locally (macOS reserves port 5000 for AirPlay), `http://<vm-ip>` on Azure. All responses are JSON. Timestamps are Unix **milliseconds**.
@@ -113,6 +128,7 @@ How `cloud/classifier` turns the MQTT stream into predictions:
 - After a pause longer than 3 s (reconnect, reboot) it starts a fresh window, so a window never joins samples from before and after the pause.
 - Messages whose `rate_hz` differs from the model's (5) are ignored and logged, because the model only understands 5 Hz data.
 - Invalid messages (wrong topic, bad JSON, wrong shape) are logged and dropped.
+- Every stored prediction is also published to `activity/<device_id>/prediction` (section 3).
 
 ## 6. Activity labels
 
@@ -148,3 +164,4 @@ CREATE INDEX predictions_device_ts ON predictions (device_id, ts DESC);
 | 0.4 | 2026-10-31 | M2: R = 5 Hz, accel in g with gravity, gyro in rad/s, W = 10 confirmed from the data; no gravity removal |
 | 0.5 | 2026-10-31 | M3: classifier behaviour section, 503 on database outage, meaning of `ts` and `seconds`, web page at `/` |
 | 0.6 | 2026-10-31 | M4: board publishes with QoS 1 (the only QoS RT-Thread's Paho port supports) |
+| 0.7 | 2026-10-31 | Predictions published back to the board on `activity/<device_id>/prediction`, for its LCD |

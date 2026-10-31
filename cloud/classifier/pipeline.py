@@ -1,12 +1,16 @@
-"""From a validated IMU batch to a stored prediction."""
+"""From a validated IMU batch to a stored (and announced) prediction."""
 
+import json
 import logging
+from collections.abc import Callable
 from typing import Protocol
 
 from payload import ImuBatch
 from predictor import DeviceStreams, Model, Prediction
 
 log = logging.getLogger("classifier")
+
+PREDICTION_TOPIC = "activity/{device_id}/prediction"
 
 
 class Writer(Protocol):
@@ -20,10 +24,27 @@ def newest_sample_ms(batch: ImuBatch) -> int | None:
     return batch.ts + round((len(batch.samples) - 1) * 1000 / batch.rate_hz)
 
 
+def prediction_message(prediction: Prediction, ts_ms: int) -> str:
+    """The message sent back to the device (docs/CONTRACTS.md, section 3)."""
+    body = {
+        "activity": prediction.activity,
+        "confidence": round(prediction.confidence, 4),
+        "ts": ts_ms,
+    }
+    return json.dumps(body, separators=(",", ":"))
+
+
 class Classifier:
-    def __init__(self, model: Model, writer: Writer):
+    def __init__(
+        self,
+        model: Model,
+        writer: Writer,
+        notify: Callable[[str, str], None] | None = None,
+    ):
+        """`notify(topic, payload)` publishes each prediction back over MQTT, if given."""
         self.model = model
         self.writer = writer
+        self.notify = notify
         self.streams = DeviceStreams(model.window)
 
     def handle(self, batch: ImuBatch, now_monotonic: float, now_ms: int) -> Prediction | None:
@@ -45,6 +66,11 @@ class Classifier:
         stored = self.writer.insert(
             batch.device_id, ts_ms, prediction.activity, prediction.confidence
         )
+        if self.notify is not None:
+            self.notify(
+                PREDICTION_TOPIC.format(device_id=batch.device_id),
+                prediction_message(prediction, ts_ms),
+            )
         log.info(
             "device=%s activity=%s confidence=%.2f%s",
             batch.device_id,

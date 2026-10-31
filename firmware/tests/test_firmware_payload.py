@@ -1,7 +1,8 @@
-"""Compile the firmware's payload.c on the host and check its JSON with the cloud's parser.
+"""Compile the firmware's payload.c on the host and check it against the cloud's code.
 
-This catches format mismatches between the board and the classifier before flashing.
-Needs a C compiler (cc); skipped otherwise.
+Both directions: the board's IMU message must pass the classifier's validator, and
+the board must read the prediction message exactly as the classifier writes it.
+This catches format mismatches before flashing. Needs a C compiler (cc).
 """
 
 import shutil
@@ -16,6 +17,8 @@ REPO = FIRMWARE.parent
 sys.path.insert(0, str(REPO / "cloud" / "classifier"))
 
 from payload import parse_imu_message  # noqa: E402  (the classifier's validator)
+from pipeline import prediction_message  # noqa: E402  (what the classifier publishes back)
+from predictor import Prediction  # noqa: E402
 
 SAMPLES = [
     [0.0, -0.98, 0.05, 0.01, -2.5, 11.27],
@@ -28,7 +31,7 @@ TOPIC = "activity/rtspark-01/imu"
 
 
 @pytest.fixture(scope="module")
-def results(tmp_path_factory) -> list[tuple[int, str]]:
+def exe(tmp_path_factory) -> Path:
     cc = shutil.which("cc") or shutil.which("gcc")
     if cc is None:
         pytest.skip("no C compiler")
@@ -39,6 +42,11 @@ def results(tmp_path_factory) -> list[tuple[int, str]]:
          "-o", str(exe)],
         check=True,
     )
+    return exe
+
+
+@pytest.fixture(scope="module")
+def results(exe) -> list[tuple[int, str]]:
     lines = subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout
     out = []
     for line in lines.splitlines():
@@ -74,3 +82,40 @@ def test_buffer_boundaries(results):
     full_length = results[0][0]
     assert results[2] == (full_length, results[0][1])  # exact fit works
     assert results[3] == (-1, "")  # one byte short fails cleanly
+
+
+def board_parse(exe: Path, text: str) -> tuple[int, str, int]:
+    out = subprocess.run([str(exe), "parse", text], check=True, capture_output=True, text=True)
+    code, activity, pct = out.stdout.split()
+    return int(code), activity, int(pct)
+
+
+@pytest.mark.parametrize(
+    ("activity", "confidence", "pct"),
+    [("run", 0.973456, 97), ("walk", 0.5, 50), ("walk", 1.0, 100), ("run", 0.99996, 100),
+     ("walk", 0.005, 1)],
+)
+def test_board_reads_the_classifier_prediction(exe, activity, confidence, pct):
+    message = prediction_message(Prediction(activity, confidence), 1_761_800_000_123)
+    assert board_parse(exe, message) == (0, activity, pct)
+
+
+def test_prediction_parse_tolerates_spacing_and_order(exe):
+    assert board_parse(exe, '{ "confidence" : 0.8 , "activity" : "run" }') == (0, "run", 80)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        '{"activity":"run"}',
+        '{"confidence":0.9}',
+        '{"activity":"run","confidence":"high"}',
+        '{"activity":"run","confidence":2.5}',
+        '{"activity":"sprinting","confidence":0.9}',  # longer than the 8-byte buffer
+        '{"activity":"","confidence":0.9}',
+        '{"activity":"run,"confidence":0.9',
+    ],
+)
+def test_prediction_parse_rejects_bad_messages(exe, text):
+    assert board_parse(exe, text) == (-1, "-", -1)

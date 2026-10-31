@@ -25,6 +25,8 @@
 static icm20608_device_t icm;
 static rt_mq_t batches;
 static struct imu_batch latest; /* last full batch, for the imu_read command */
+static float newest[IMU_AXES];   /* last single sample, for the display */
+static volatile rt_bool_t has_newest;
 static rt_uint32_t read_errors, dropped_batches;
 
 static rt_err_t read_sample(float out[IMU_AXES])
@@ -57,6 +59,10 @@ static void sampler_entry(void *parameter)
             batch.ts_ms = clock_now_ms();
         if (read_sample(batch.samples[count]) == RT_EOK)
         {
+            rt_base_t level = rt_hw_interrupt_disable();
+            rt_memcpy(newest, batch.samples[count], sizeof(newest));
+            has_newest = RT_TRUE;
+            rt_hw_interrupt_enable(level);
             count++;
         }
         else if (read_errors++ % 50 == 0)
@@ -101,6 +107,14 @@ rt_err_t imu_start(rt_mq_t out)
     rt_thread_startup(thread);
     LOG_I("sampling at %d Hz (±8 g, ±1000 dps)", IMU_RATE_HZ);
     return RT_EOK;
+}
+
+rt_bool_t imu_get_latest(float out[IMU_AXES])
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+    rt_memcpy(out, newest, sizeof(newest));
+    rt_hw_interrupt_enable(level);
+    return has_newest;
 }
 
 /* msh command: print the newest batch, to check units (at rest |a| should be about 1 g). */

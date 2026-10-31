@@ -2,7 +2,8 @@
 
 Subscribes to every board's IMU topic, validates each message against the
 contract, keeps a 2 s sliding window per device, classifies it once per
-second with the exported ONNX model, and stores the result in PostgreSQL.
+second with the exported ONNX model, stores the result in PostgreSQL and
+publishes it back on the device's prediction topic.
 """
 
 import logging
@@ -55,14 +56,19 @@ def main() -> None:
     model = Model(Path(os.environ.get("MODEL_DIR", "/srv/model")))
     log.info("model loaded: window=%d samples at %d Hz, labels=%s",
              model.window, model.rate_hz, model.labels)
-    classifier = Classifier(model, PredictionWriter(os.environ.get("DATABASE_URL", "")))
 
     host = os.environ.get("MQTT_HOST", "mosquitto")
     port = int(os.environ.get("MQTT_PORT", "1883"))
-    client = mqtt.Client(
-        mqtt.CallbackAPIVersion.VERSION2, client_id="activity-classifier", userdata=classifier
-    )
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="activity-classifier")
     client.username_pw_set(os.environ["MQTT_USERNAME"], os.environ["MQTT_PASSWORD"])
+
+    # Each prediction is also published back to the device (e.g. for its display).
+    classifier = Classifier(
+        model,
+        PredictionWriter(os.environ.get("DATABASE_URL", "")),
+        notify=lambda topic, payload: client.publish(topic, payload, qos=0),
+    )
+    client.user_data_set(classifier)
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message

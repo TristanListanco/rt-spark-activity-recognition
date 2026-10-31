@@ -30,6 +30,15 @@ static char uri[96];
 static char json[768]; /* one message is about 400 bytes */
 static rt_uint32_t sent, not_connected, failed;
 
+/* Latest prediction from the classifier; written by the MQTT thread, read by the display. */
+static struct
+{
+    rt_bool_t valid;
+    char activity[8];
+    int confidence_pct;
+    rt_tick_t received;
+} prediction;
+
 static void wifi_connect(void)
 {
     rt_wlan_set_mode(RT_WLAN_DEVICE_STA_NAME, RT_WLAN_STATION);
@@ -59,9 +68,29 @@ static void on_offline(MQTTClient *c)
     LOG_W("MQTT disconnected; the client retries automatically");
 }
 
+static void on_prediction(MQTTClient *c, MessageData *msg)
+{
+    char activity[sizeof(prediction.activity)];
+    int pct;
+    rt_base_t level;
+
+    if (prediction_parse((const char *)msg->message->payload, msg->message->payloadlen,
+                         activity, sizeof(activity), &pct) != 0)
+    {
+        LOG_W("ignoring malformed prediction message");
+        return;
+    }
+    level = rt_hw_interrupt_disable();
+    rt_strncpy(prediction.activity, activity, sizeof(prediction.activity));
+    prediction.confidence_pct = pct;
+    prediction.received = rt_tick_get();
+    prediction.valid = RT_TRUE;
+    rt_hw_interrupt_enable(level);
+}
+
 static void on_message(MQTTClient *c, MessageData *msg)
 {
-    /* nothing is subscribed; required so stray messages are ignored safely */
+    /* messages on topics we did not subscribe to are ignored */
 }
 
 static rt_err_t mqtt_start(void)
@@ -89,6 +118,10 @@ static rt_err_t mqtt_start(void)
     client.online_callback = on_online;
     client.offline_callback = on_offline;
     client.defaultMessageHandler = on_message;
+    /* (re)subscribed automatically after every connect */
+    client.messageHandlers[0].topicFilter = (char *)PREDICTION_TOPIC;
+    client.messageHandlers[0].callback = on_prediction;
+    client.messageHandlers[0].qos = QOS1;
 
     return paho_mqtt_start(&client) == 0 ? RT_EOK : -RT_ERROR;
 }
@@ -150,6 +183,31 @@ rt_bool_t net_is_online(void)
     return client.isconnected ? RT_TRUE : RT_FALSE;
 }
 
+void net_get_status(struct net_status *out)
+{
+    rt_base_t level;
+
+    rt_memset(out, 0, sizeof(*out));
+    out->wifi_up = rt_wlan_is_ready();
+    if (out->wifi_up && netdev_default != RT_NULL)
+        inet_ntoa_r(netdev_default->ip_addr, out->ip, sizeof(out->ip));
+    out->mqtt_online = net_is_online();
+    out->broker = uri + sizeof("tcp://") - 1;
+    out->sent = sent;
+    out->skipped = not_connected;
+    out->failed = failed;
+
+    level = rt_hw_interrupt_disable();
+    if (prediction.valid)
+    {
+        out->has_prediction = RT_TRUE;
+        rt_memcpy(out->activity, prediction.activity, sizeof(out->activity));
+        out->confidence_pct = prediction.confidence_pct;
+        out->prediction_age_ms = (rt_tick_get() - prediction.received) * 1000 / RT_TICK_PER_SECOND;
+    }
+    rt_hw_interrupt_enable(level);
+}
+
 /* msh command: connection state and message counters. */
 static void app_status(void)
 {
@@ -161,5 +219,9 @@ static void app_status(void)
     rt_kprintf("clock    : %s\n", clock_is_synced() ? "synced via NTP" : "not synced (ts=0)");
     rt_kprintf("messages : %u sent, %u skipped while offline, %u failed\n",
                sent, not_connected, failed);
+    if (prediction.valid)
+        rt_kprintf("cloud    : %s (%d%%)\n", prediction.activity, prediction.confidence_pct);
+    else
+        rt_kprintf("cloud    : no prediction received yet\n");
 }
 MSH_CMD_EXPORT(app_status, show Wi-Fi / MQTT / message status);

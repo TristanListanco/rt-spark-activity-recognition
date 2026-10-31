@@ -11,11 +11,13 @@ on:
     paths:
       - "firmware/**"
       - "cloud/classifier/payload.py"
+      - "cloud/classifier/pipeline.py"
       - ".github/workflows/firmware.yml"
   pull_request:
     paths:
       - "firmware/**"
       - "cloud/classifier/payload.py"
+      - "cloud/classifier/pipeline.py"
       - ".github/workflows/firmware.yml"
   workflow_dispatch:
 
@@ -53,7 +55,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install pytest
+      - run: pip install -r cloud/classifier/requirements.txt pytest
       - run: pytest -q firmware/tests
 
   build:

@@ -91,3 +91,70 @@ int payload_format(char *buf, size_t size, const char *device_id, uint64_t ts_ms
     *w.p = '\0';
     return (int)(w.p - buf);
 }
+
+/* Position just after `"key"` followed by optional spaces and a colon, or NULL. */
+static const char *after_key(const char *json, size_t len, const char *key)
+{
+    size_t klen = strlen(key);
+    size_t i;
+    for (i = 0; i + klen + 2 <= len; i++)
+    {
+        const char *p = json + i;
+        const char *end = json + len;
+        if (p[0] != '"' || memcmp(p + 1, key, klen) != 0 || p[klen + 1] != '"')
+            continue;
+        p += klen + 2;
+        while (p < end && (*p == ' ' || *p == '\t'))
+            p++;
+        if (p >= end || *p != ':')
+            continue;
+        p++;
+        while (p < end && (*p == ' ' || *p == '\t'))
+            p++;
+        return p;
+    }
+    return NULL;
+}
+
+int prediction_parse(const char *json, size_t len, char *activity, size_t activity_size,
+                     int *confidence_pct)
+{
+    const char *end = json + len;
+    const char *p;
+    size_t n = 0;
+    long whole = 0, frac = 0, scale = 1;
+
+    /* "activity": "<label>" */
+    p = after_key(json, len, "activity");
+    if (p == NULL || p >= end || *p != '"' || activity_size == 0)
+        return -1;
+    for (p++; p < end && *p != '"'; p++)
+    {
+        if (n + 1 >= activity_size || *p < 'a' || *p > 'z') /* labels are lowercase words */
+            return -1;
+        activity[n++] = *p;
+    }
+    if (p >= end || n == 0)
+        return -1;
+    activity[n] = '\0';
+
+    /* "confidence": <number between 0 and 1>, read without floating-point parsing */
+    p = after_key(json, len, "confidence");
+    if (p == NULL || p >= end || *p < '0' || *p > '9')
+        return -1;
+    for (; p < end && *p >= '0' && *p <= '9' && whole < 10; p++) /* stop before overflow */
+        whole = whole * 10 + (*p - '0');
+    if (p < end && *p == '.')
+    {
+        for (p++; p < end && *p >= '0' && *p <= '9' && scale < 100000; p++)
+        {
+            frac = frac * 10 + (*p - '0');
+            scale *= 10;
+        }
+    }
+    if (whole > 1)
+        return -1;
+    /* percentage = (whole + frac/scale) * 100, rounded */
+    *confidence_pct = (int)(whole * 100 + (frac * 100 + scale / 2) / scale);
+    return 0;
+}

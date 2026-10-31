@@ -101,3 +101,32 @@ def test_timestamp_is_newest_sample_or_arrival_time(model):
     classifier.handle(batch(ts=0), 0.0, now_ms=111)
     classifier.handle(batch(ts=0), 1.0, now_ms=222)
     assert writer.rows[0][1] == 222
+
+
+def test_each_stored_prediction_is_published_back(model):
+    import json
+
+    sent = []
+    classifier = Classifier(model, MemoryWriter(), notify=lambda t, p: sent.append((t, p)))
+    classifier.handle(batch(ts=1_000_000), 0.0, 0)
+    assert sent == []  # window not full yet
+    prediction = classifier.handle(batch(ts=1_001_000), 1.0, 0)
+    assert len(sent) == 1
+    topic, payload = sent[0]
+    assert topic == "activity/rtspark-01/prediction"
+    body = json.loads(payload)
+    assert body == {
+        "activity": prediction.activity,
+        "confidence": round(prediction.confidence, 4),
+        "ts": 1_001_800,  # newest sample of the second batch
+    }
+
+
+def test_prediction_message_is_compact_json():
+    from pipeline import prediction_message
+    from predictor import Prediction
+
+    assert (
+        prediction_message(Prediction("run", 0.973456), 1761800000123)
+        == '{"activity":"run","confidence":0.9735,"ts":1761800000123}'
+    )

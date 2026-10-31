@@ -7,6 +7,8 @@
 
 #define DEVICE_ID      "rtspark-01"
 #define MQTT_TOPIC     "activity/" DEVICE_ID "/imu"
+#define PREDICTION_TOPIC "activity/" DEVICE_ID "/prediction" /* classifier → board */
+#define LOCAL_UTC_OFFSET_MIN (8 * 60) /* Asia/Manila, for the on-screen clock */
 
 /* Contract section 2: 5 samples per second, sent as one message per second. */
 #define IMU_RATE_HZ    5

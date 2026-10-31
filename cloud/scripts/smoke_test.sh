@@ -45,6 +45,14 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 python3 -m venv "$tmp_dir/venv"
 "$tmp_dir/venv/bin/pip" install -q --disable-pip-version-check -r "$repo_dir/tools/requirements.txt"
+# Listen for the predictions the classifier publishes back to the device. The single
+# quotes are deliberate: the credentials expand inside the broker container.
+# shellcheck disable=SC2016
+"${compose[@]}" exec -T mosquitto sh -c \
+  'mosquitto_sub -h localhost -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "$0" -C 3 -W 60' \
+  "activity/$device/prediction" > "$tmp_dir/predictions.txt" &
+sub_pid=$!
+sleep 1
 "$tmp_dir/venv/bin/python" "$repo_dir/tools/fake_publisher.py" \
   --host localhost --port "${MQTT_PORT:-1883}" --device-id "$device" \
   --activity alternate --switch-every 6 --count 12
@@ -64,6 +72,18 @@ echo "latest: $latest"
 case "$latest" in run*) ;; *) fail "expected run, got $latest" ;; esac
 activities=$(curl -fsS "$api/api/history?device_id=$device&limit=50" | json '" ".join(sorted({r["activity"] for r in d}))')
 [ "$activities" = "run walk" ] || fail "history has: $activities"
+
+step "Predictions were published back on activity/$device/prediction"
+wait "$sub_pid" || fail "no prediction messages received"
+python3 - "$tmp_dir/predictions.txt" <<'PY' || fail "bad prediction message"
+import json, sys
+lines = open(sys.argv[1]).read().split()
+assert len(lines) == 3, lines
+for line in lines:
+    msg = json.loads(line)
+    assert set(msg) == {"activity", "confidence", "ts"} and msg["activity"] in ("walk", "run"), msg
+print("ok:", lines[-1])
+PY
 
 step "Today's summary counts those seconds"
 total=$(curl -fsS "$api/api/summary?device_id=$device" | json 'sum(d["seconds"].values())')

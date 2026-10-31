@@ -115,7 +115,7 @@ The exported model takes raw 2 s windows `(batch, 10, 6)` in g and rad/s and ret
 
 ### Firmware
 
-RT-Thread on the RT-Spark, using RT-Thread's official `stm32f407-rt-spark` board package with its RW007 Wi-Fi and ICM-20608 IMU drivers. The firmware samples at 5 Hz and publishes one MQTT message per second. Details, LED meanings and serial commands: [firmware/README.md](firmware/README.md).
+RT-Thread on the RT-Spark, using RT-Thread's official `stm32f407-rt-spark` board package with its RW007 Wi-Fi and ICM-20608 IMU drivers. The firmware samples at 5 Hz and publishes one MQTT message per second. Its LCD shows the cloud's prediction (sent back over MQTT) and the board's status. Details, LED meanings and serial commands: [firmware/README.md](firmware/README.md).
 
 The only prerequisite is the Arm GCC toolchain (GCC 14.2, native on Apple Silicon, no admin rights):
 

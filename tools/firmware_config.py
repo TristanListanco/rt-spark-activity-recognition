@@ -33,6 +33,8 @@ SETTINGS = [
     ("RW007_RST_PIN", "111"),  # PG15
     # On-board ICM-20608 6-axis IMU on software I2C bus 2
     ("BSP_USING_ICM20608", "y"),
+    # On-board 240x240 LCD (FSMC), for the status screen in applications/display.c
+    ("BSP_USING_ONBOARD_LCD", "y"),
     # MQTT client. Pipe mode (the default for RT-Thread 4.1+) needs the POSIX
     # file/pipe layer; UDP mode fails to compile on RT-Thread 5.4 because it
     # includes lwIP's and SAL's socket headers together.
@@ -49,6 +51,9 @@ SETTINGS = [
     # Kernel object names up to 16 chars; the ICM-20608 driver names its mutex
     # "mutex_icm20608" (14), which logs an error at boot with the default 12.
     ("RT_NAME_MAX", "16"),
+    # lwIP's tcpip thread peaked at 92% of the default 1 KB stack once the board
+    # also receives predictions; 2 KB leaves a safe margin.
+    ("RT_LWIP_TCPTHREAD_STACKSIZE", "2048"),
 ]
 
 

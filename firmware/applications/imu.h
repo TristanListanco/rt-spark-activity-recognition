@@ -16,4 +16,7 @@ struct imu_batch
 /* Initialise the sensor and start sampling; full batches are sent to `out`. */
 rt_err_t imu_start(rt_mq_t out);
 
+/* Copy the newest sample (g, rad/s). Returns RT_FALSE if nothing was read yet. */
+rt_bool_t imu_get_latest(float out[IMU_AXES]);
+
 #endif /* IMU_H */

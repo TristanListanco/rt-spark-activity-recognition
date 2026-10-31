@@ -1,6 +1,8 @@
 /*
- * Host-side driver for payload.c: prints one result per line as "<return value> <json>"
- * so test_firmware_payload.py can check the output against the cloud's parser.
+ * Host-side driver for payload.c, used by test_firmware_payload.py.
+ *
+ *   payload_main             prints payload_format() results, one per line: "<return> <json>"
+ *   payload_main parse JSON  prints prediction_parse() of JSON: "<return> <activity> <percent>"
  */
 #include <stdio.h>
 #include <string.h>
@@ -15,10 +17,22 @@ static const float SAMPLES[5][6] = {
     {7.99f, -7.99f, 0.0001f, -0.0001f, 1.0f, -1.0f},
 };
 
-int main(void)
+static int parse_mode(const char *json)
+{
+    char activity[8] = "";
+    int pct = -1;
+    int rc = prediction_parse(json, strlen(json), activity, sizeof(activity), &pct);
+    printf("%d %s %d\n", rc, rc == 0 ? activity : "-", rc == 0 ? pct : -1);
+    return 0;
+}
+
+int main(int argc, char **argv)
 {
     char buf[768];
     int full, n;
+
+    if (argc == 3 && strcmp(argv[1], "parse") == 0)
+        return parse_mode(argv[2]);
 
     /* 1: a normal message */
     full = payload_format(buf, sizeof(buf), "rtspark-01", 1761800000123ULL, 5, SAMPLES, 5);

@@ -285,7 +285,7 @@
 #define RT_LWIP_TCP_WND 8196
 #define RT_LWIP_TCPTHREAD_PRIORITY 10
 #define RT_LWIP_TCPTHREAD_MBOX_SIZE 8
-#define RT_LWIP_TCPTHREAD_STACKSIZE 1024
+#define RT_LWIP_TCPTHREAD_STACKSIZE 2048
 #define RT_LWIP_ETHTHREAD_PRIORITY 12
 #define RT_LWIP_ETHTHREAD_STACKSIZE 1024
 #define RT_LWIP_ETHTHREAD_MBOX_SIZE 8
@@ -585,6 +585,9 @@
 /* Onboard Peripheral Drivers */
 
 #define BSP_USING_USB_TO_USART
+#define BSP_USING_SRAM
+#define BSP_USING_ONBOARD_LCD
+#define BSP_USING_ONBOARD_LCD_PWM_BL
 #define BSP_USING_RW007_WLAN
 #define BSP_USING_ICM20608
 /* end of Onboard Peripheral Drivers */
@@ -595,10 +598,15 @@
 #define BSP_USING_UART
 #define BSP_STM32_UART_V1_TX_TIMEOUT 2000
 #define BSP_USING_UART1
+#define BSP_USING_PWM
+#define BSP_USING_PWM14
+#define BSP_USING_PWM14_CH1
 #define BSP_USING_SPI
 #define BSP_USING_SPI2
 #define BSP_USING_SOFT_I2C
 #define BSP_USING_SOFT_I2C2
+#define BSP_USING_EXT_FMC_IO
+#define BSP_USING_FMC
 /* end of On-chip Peripheral Drivers */
 
 /* Board extended module Drivers */
