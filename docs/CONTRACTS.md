@@ -36,7 +36,7 @@ The firmware converts raw IMU readings to these units **before** publishing; not
 
 | Field | Value |
 |---|---|
-| Broker host | local Mac IP during development, Azure VM static IP after M6 |
+| Broker host | `rtspark-activity-b2093c.eastasia.cloudapp.azure.com` (Azure VM, static IP); the local stack uses the computer's IP |
 | Port | `1883` |
 | Auth | username/password from `cloud/.env` (never committed) |
 | Topic | `activity/<device_id>/imu`, e.g. `activity/rtspark-01/imu` |
@@ -81,7 +81,7 @@ Compact JSON (no spaces), produced by `prediction_message()` in `cloud/classifie
 
 ## 4. Web API (cloud → app)
 
-Base URL: `http://<host>:8000` locally (macOS reserves port 5000 for AirPlay), `http://<vm-ip>` on Azure. All responses are JSON. Timestamps are Unix **milliseconds**.
+Base URL: `http://rtspark-activity-b2093c.eastasia.cloudapp.azure.com` (Azure, port 80); `http://<host>:8000` for the local stack (macOS reserves port 5000 for AirPlay). All responses are JSON. Timestamps are Unix **milliseconds**.
 
 Bad query parameters (missing `device_id`, `limit` outside 1–500, malformed `before` or `date`) return `400`.
 

@@ -15,10 +15,17 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        // The deployed API (cloud/scripts/azure_create_vm.sh), used until the user sets
+        // another address in Settings. Override with -Pactivity.apiUrl=http://... .
+        val apiUrl = providers.gradleProperty("activity.apiUrl")
+            .getOrElse("http://rtspark-activity-b2093c.eastasia.cloudapp.azure.com")
+        buildConfigField("String", "DEFAULT_API_URL", "\"$apiUrl\"")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {

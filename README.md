@@ -49,7 +49,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 - [x] M3: Classifier + API working end to end with simulated data
 - [x] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
 - [x] M5: Android app
-- [ ] M6: Deployed to an Azure VM
+- [x] M6: Deployed to an Azure VM
 - [ ] M7: Own data collected, model fine-tuned
 - [ ] M8: Final test, demo video
 
@@ -97,6 +97,31 @@ docker compose -f cloud/docker-compose.yml logs -f classifier                # o
 Replaying real dataset rows through the running stack, the label switched to "run" about 1 s after the data switched.
 
 Port 8000 is used instead of 5000 because macOS reserves 5000 for AirPlay Receiver.
+
+### Cloud deployment (Azure)
+
+The same Docker Compose stack runs on an Azure VM, so the board and the phone work from any network, including mobile data:
+
+| | |
+|---|---|
+| VM | `activity-vm`, Ubuntu 24.04, Standard_B2ats_v2 (2 vCPU, 1 GB RAM + 2 GB swap), region East Asia |
+| Address | `rtspark-activity-b2093c.eastasia.cloudapp.azure.com` (static IP) |
+| MQTT | `rtspark-activity-b2093c.eastasia.cloudapp.azure.com:1883`, password auth (same credentials as `cloud/.env`) |
+| API | `http://rtspark-activity-b2093c.eastasia.cloudapp.azure.com/api/...` and the live page at `http://rtspark-activity-b2093c.eastasia.cloudapp.azure.com/` |
+| Firewall | SSH only from the deploying computer's IP; 1883 and 80 open |
+
+Two scripts reproduce it (Azure CLI, after `az login`):
+
+```bash
+LOCATION=eastasia SIZE=Standard_B2ats_v2 cloud/scripts/azure_create_vm.sh   # VM, static IP + DNS name, firewall
+cloud/scripts/azure_deploy.sh rtspark-activity-b2093c.eastasia.cloudapp.azure.com              # pull repo, copy .env over SSH, start, smoke test
+```
+
+`azure_deploy.sh` is also how to ship updates: push to GitHub, then run it again. The first-boot setup is in `cloud/deploy/cloud-init.yaml` (Docker, git, swap). Notes:
+- The student subscription only allows a few regions (East Asia, Japan East, Malaysia West, Indonesia Central, Australia East). B1s had no capacity in East Asia, so the VM is a B2ats v2, which has the same 1 GB of RAM and is also in Azure's free tier.
+- With all four containers running, the VM uses about 420 MB of RAM.
+- If your public IP changes, re-allow SSH: `az network nsg rule update -g rg-activity --nsg-name activity-vmNSG -n ssh-from-my-ip --source-address-prefixes $(curl -s https://api.ipify.org)/32`.
+- Remove everything with `az group delete -n rg-activity`.
 
 ### Machine learning
 

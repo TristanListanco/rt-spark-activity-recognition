@@ -1,12 +1,12 @@
 package ph.edu.msuiit.activity.data
 
 import android.content.Context
-import android.os.Build
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import ph.edu.msuiit.activity.BuildConfig
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
@@ -32,16 +32,8 @@ class SettingsStore(private val context: Context) {
         private val DEVICE_ID = stringPreferencesKey("device_id")
         const val DEFAULT_DEVICE_ID = "rtspark-01"
 
-        /**
-         * The emulator reaches the computer running it at 10.0.2.2. A real phone joins the
-         * iPhone hotspot, where the Mac running the API is 172.20.10.2 (firmware/README.md).
-         */
-        fun defaultBaseUrl(): String =
-            if (isEmulator()) "http://10.0.2.2:8000" else "http://172.20.10.2:8000"
-
-        private fun isEmulator(): Boolean =
-            Build.FINGERPRINT.contains("generic") || Build.FINGERPRINT.contains("emulator") ||
-                Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")
+        /** The deployed cloud API (set in app/build.gradle.kts), reachable from any network. */
+        fun defaultBaseUrl(): String = BuildConfig.DEFAULT_API_URL
     }
 }
 

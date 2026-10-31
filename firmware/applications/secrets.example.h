@@ -7,14 +7,14 @@
 
 /*
  * Known Wi-Fi networks, tried in this order at boot; the first one in range is used,
- * together with its broker address (the computer running the MQTT broker on that
- * network, e.g. your Mac's IP there; later the Azure VM). A hostname also works.
+ * together with its broker address: the Azure VM's host name (the same on every
+ * network), or for the local stack the IP of the computer running it on that network.
  * Networks must be 2.4 GHz and hand out IPv4 addresses (firmware/README.md).
  * Copy SSIDs exactly: iPhone hotspots use a curly apostrophe (Tristan’s iPhone).
  */
 #define WIFI_NETWORKS                                                     \
-    {"your-home-wifi", "your-home-wifi-password", "192.168.1.10"},        \
-    {"your-phone-hotspot", "your-hotspot-password", "172.20.10.2"},
+    {"your-home-wifi", "your-home-wifi-password", "rtspark-activity-b2093c.eastasia.cloudapp.azure.com"}, \
+    {"your-phone-hotspot", "your-hotspot-password", "rtspark-activity-b2093c.eastasia.cloudapp.azure.com"},
 
 #define MQTT_PORT      1883
 #define MQTT_USERNAME  "device"    /* from cloud/.env */

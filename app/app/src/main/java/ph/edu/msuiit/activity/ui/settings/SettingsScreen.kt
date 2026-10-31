@@ -26,7 +26,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ph.edu.msuiit.activity.data.SettingsStore
 
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel, modifier: Modifier = Modifier) {
@@ -48,7 +47,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, modifier: Modifier = Modifier) 
             supportingText = {
                 Text(
                     state.urlError
-                        ?: "Emulator: http://10.0.2.2:8000 · phone on the hotspot: http://172.20.10.2:8000",
+                        ?: "Default: the cloud API. Local stack: http://<computer's IP>:8000 (emulator: http://10.0.2.2:8000)",
                 )
             },
             singleLine = true,
@@ -56,7 +55,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, modifier: Modifier = Modifier) 
             modifier = Modifier.fillMaxWidth(),
         )
         TextButton(onClick = viewModel::useDefaultAddress) {
-            Text("Use default for this device (${SettingsStore.defaultBaseUrl()})")
+            Text("Use the cloud API (default)")
         }
 
         OutlinedTextField(

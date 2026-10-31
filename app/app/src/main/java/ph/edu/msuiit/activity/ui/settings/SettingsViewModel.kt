@@ -81,7 +81,7 @@ class SettingsViewModel(
     private fun validUrl(): String? {
         val url = normalizeBaseUrl(_state.value.baseUrl)
         if (url == null) {
-            _state.update { it.copy(urlError = "Enter an address like http://172.20.10.2:8000") }
+            _state.update { it.copy(urlError = "Enter an address like http://192.168.1.44:8000") }
         }
         return url
     }
