@@ -75,7 +75,7 @@ jobs:
           {
             echo '### Firmware size'
             echo '```'
-            arm-none-eabi-size rtthread.elf
+            arm-none-eabi-size rt-thread.elf
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
@@ -83,6 +83,7 @@ jobs:
           name: rtthread-firmware
           path: |
             firmware/rtthread.bin
-            firmware/rtthread.elf
-            firmware/rtthread.map
+            firmware/rtthread.hex
+            firmware/rt-thread.elf
+            firmware/rt-thread.map
           retention-days: 14

@@ -44,7 +44,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 
 - [x] M0: Repository set up
 - [x] M1: Local cloud stack (broker, DB, API stub, fake publisher)
-- [ ] M1b: Firmware toolchain builds and flashes the stock BSP
+- [x] M1b: Firmware toolchain builds and flashes the stock BSP
 - [ ] M2: ML model trained and exported
 - [ ] M3: Classifier + API working end to end with simulated data
 - [ ] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
@@ -96,7 +96,45 @@ Port 8000 is used instead of 5000 because macOS reserves 5000 for AirPlay Receiv
 _Coming in M2._
 
 ### Firmware
-_Coming in M4._
+
+The board runs RT-Thread, using its official `stm32f407-rt-spark` board support package (BSP). That package already includes drivers for the on-board RW007 Wi-Fi (SPI2) and ICM-20608 IMU (software I2C). The application code arrives in M4. These are the toolchain steps on macOS (Apple Silicon); none of them need admin rights:
+
+```bash
+# 1. Arm GCC 14.2 (native arm64) through PlatformIO
+pio pkg install --global --tool "platformio/toolchain-gccarmnoneeabi@1.140201.0"
+
+# 2. RT-Thread Env (menuconfig, pkgs, scons). Same as the official install_macos.sh,
+#    minus its `brew upgrade` of every Homebrew package.
+mkdir -p ~/.env/local_pkgs ~/.env/packages ~/.env/tools
+git clone --depth=1 https://github.com/RT-Thread/packages.git ~/.env/packages/packages
+echo 'source "$PKGS_DIR/packages/Kconfig"' > ~/.env/packages/Kconfig
+git clone --depth=1 https://github.com/RT-Thread/sdk.git ~/.env/packages/sdk
+git clone --depth=1 https://github.com/RT-Thread/env.git ~/.env/tools/scripts
+cp ~/.env/tools/scripts/env.sh ~/.env/env.sh
+
+# 3. RT-Thread source: only the parts this board needs (about 100 MB instead of the full tree)
+git clone --depth 1 --filter=blob:none --sparse https://github.com/RT-Thread/rt-thread.git
+cd rt-thread
+git sparse-checkout set src include libcpu components tools bsp/stm32/libraries bsp/stm32/stm32f407-rt-spark
+
+# 4. Build. env.sh sets RTT_EXEC_PATH=/usr/bin, which is wrong on macOS, so override it.
+cd bsp/stm32/stm32f407-rt-spark
+source ~/.env/env.sh
+export RTT_CC=gcc RTT_EXEC_PATH="$HOME/.platformio/packages/toolchain-gccarmnoneeabi/bin"
+pkgs --update          # downloads the STM32F4 HAL and CMSIS packages
+scons -j8              # → rtthread.bin, rt-thread.elf
+```
+
+Flash through the on-board ST-Link with PlatformIO's OpenOCD, then open the serial console (115200 baud):
+
+```bash
+OC=~/.platformio/packages/tool-openocd
+$OC/bin/openocd -s $OC/openocd/scripts -f interface/stlink.cfg -f target/stm32f4x.cfg \
+  -c "program rtthread.bin 0x08000000 verify reset exit"
+pio device monitor -p /dev/cu.usbmodem* -b 115200
+```
+
+On macOS, the first time the board is plugged in you have to click **Allow** on the "Allow accessory to connect?" prompt.
 
 ### Android app
 _Coming in M5._

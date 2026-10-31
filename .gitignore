@@ -20,8 +20,9 @@ ml/data/
 firmware/build/
 firmware/**/*.o
 firmware/rtthread.bin
-firmware/rtthread.elf
-firmware/rtthread.map
+firmware/rtthread.hex
+firmware/rt-thread.elf
+firmware/rt-thread.map
 firmware/.sconsign.dblite
 .pio/
 
