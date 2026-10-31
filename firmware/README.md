@@ -62,7 +62,7 @@ Wi-Fi requirements: the RW007 joins **2.4 GHz** networks, and the network must h
 rtspark-01             13:45:07     device and local time (NTP, UTC+8)
 ┌──────────────────────────────┐
 │           RUNNING            │    the cloud's latest prediction: blue = walking,
-│        97% confident         │    orange = running, grey = none in the last 5 s
+│        97% confident         │    orange = running, green = idle, grey = none in the last 5 s
 └──────────────────────────────┘
 Wi-Fi  PLDTHOMEFIBR0a448            network joined (green), or "joining..." (red)
 IP     192.168.1.48                 the board's address on it
@@ -96,7 +96,7 @@ The buttons label what you're doing, and every message carries that label until 
 |---|---|---|
 | LEFT | walk | REC WALK (blue) |
 | RIGHT | run | REC RUN (orange) |
-| UP | idle (standing still) | REC IDLE |
+| UP | idle (standing still) | REC IDLE (green) |
 | DOWN | stop recording | device name |
 
 On a computer, `tools/record.py --host <broker>` saves every labelled sample to `ml/data/own/*.csv` (git-ignored). Over serial, `rec walk` / `rec stop` does the same without the buttons. If Wi-Fi is gone for 20 s (e.g. you walk out of range of home Wi-Fi), the board tries its other known networks, so a phone hotspot in your pocket takes over.

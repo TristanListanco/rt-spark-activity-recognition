@@ -30,6 +30,7 @@ object Json {
             date = obj.getString("date"),
             walkSeconds = seconds.optInt("walk", 0),
             runSeconds = seconds.optInt("run", 0),
+            idleSeconds = seconds.optInt("idle", 0),
         )
     }
 

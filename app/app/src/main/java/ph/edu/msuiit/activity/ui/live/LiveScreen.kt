@@ -92,7 +92,7 @@ private fun ActivityCard(state: LiveUiState) {
             "${(prediction.confidence * 100).toInt()}% confident · updated ${formatAgo(state.now - prediction.ts)}"
     }
     val background by animateColorAsState(
-        targetValue = if (live) colors.of(prediction.activity) else colors.idle, // live ⇒ prediction != null
+        targetValue = if (live) colors.of(prediction.activity) else colors.inactive, // live ⇒ prediction != null
         label = "activity colour",
     )
 
@@ -116,10 +116,17 @@ private fun ActivityCard(state: LiveUiState) {
     }
 }
 
-/** Today's walking vs running time as two labelled numbers and one proportional bar. */
+/** Today's time per activity: a labelled row each and one proportional bar. */
 @Composable
 private fun SummaryCard(summary: DailySummary?) {
     val colors = LocalActivityColors.current
+    val totals = summary?.let {
+        listOf(
+            Triple("Walking", it.walkSeconds, colors.walk),
+            Triple("Running", it.runSeconds, colors.run),
+            Triple("Idle", it.idleSeconds, colors.idle),
+        )
+    }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp),
@@ -127,38 +134,26 @@ private fun SummaryCard(summary: DailySummary?) {
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Today", style = MaterialTheme.typography.titleMedium)
-            if (summary == null) {
+            if (totals == null) {
                 Text("—", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 return@Column
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Total("Walking", summary.walkSeconds, colors.walk)
-                Total("Running", summary.runSeconds, colors.run)
-            }
-            val total = summary.walkSeconds + summary.runSeconds
-            if (total == 0) {
+            totals.forEach { (label, seconds, color) -> Total(label, seconds, color) }
+            val present = totals.filter { it.second > 0 }
+            if (present.isEmpty()) {
                 Text(
                     "Nothing recorded today yet",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                Row(Modifier.fillMaxWidth().height(12.dp)) {
-                    if (summary.walkSeconds > 0) {
+                Row(Modifier.fillMaxWidth().height(12.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    present.forEach { (_, seconds, color) ->
                         Box(
                             Modifier
-                                .weight(summary.walkSeconds.toFloat())
+                                .weight(seconds.toFloat())
                                 .height(12.dp)
-                                .background(colors.walk, RoundedCornerShape(4.dp)),
-                        )
-                    }
-                    if (summary.walkSeconds > 0 && summary.runSeconds > 0) Spacer(Modifier.width(2.dp))
-                    if (summary.runSeconds > 0) {
-                        Box(
-                            Modifier
-                                .weight(summary.runSeconds.toFloat())
-                                .height(12.dp)
-                                .background(colors.run, RoundedCornerShape(4.dp)),
+                                .background(color, RoundedCornerShape(4.dp)),
                         )
                     }
                 }
@@ -169,12 +164,15 @@ private fun SummaryCard(summary: DailySummary?) {
 
 @Composable
 private fun Total(label: String, seconds: Int, color: Color) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).background(color, CircleShape))
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text(formatDuration(seconds.toLong()), style = MaterialTheme.typography.headlineSmall)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(10.dp).background(color, CircleShape))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(formatDuration(seconds.toLong()), style = MaterialTheme.typography.titleMedium)
     }
 }

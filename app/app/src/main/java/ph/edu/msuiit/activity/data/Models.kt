@@ -2,7 +2,7 @@ package ph.edu.msuiit.activity.data
 
 /** One classified second (docs/CONTRACTS.md, section 4). */
 data class Prediction(
-    val activity: String, // "walk" or "run"
+    val activity: String, // "walk", "run" or "idle"
     val confidence: Double, // 0..1
     val ts: Long, // Unix ms of the newest sample in the classified window
 )
@@ -12,6 +12,7 @@ data class DailySummary(
     val date: String,
     val walkSeconds: Int,
     val runSeconds: Int,
+    val idleSeconds: Int,
 )
 
 /** Where the API lives and which board to show. */

@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime, timedelta, tzinfo
 
 import psycopg
 
-LABELS = ("walk", "run")
+LABELS = ("walk", "run", "idle")  # the model's classes (ml/models/model_meta.json)
 
 
 @dataclass(frozen=True)

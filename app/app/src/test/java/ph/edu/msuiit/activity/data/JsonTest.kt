@@ -31,14 +31,15 @@ class JsonTest {
 
     @Test
     fun summary() {
-        val s = Json.summary("""{ "date": "2026-10-30", "seconds": { "walk": 1240, "run": 315 } }""")
-        assertEquals(DailySummary("2026-10-30", 1240, 315), s)
+        val s = Json.summary("""{ "date": "2026-10-30", "seconds": { "walk": 1240, "run": 315, "idle": 90 } }""")
+        assertEquals(DailySummary("2026-10-30", 1240, 315, 90), s)
     }
 
     @Test
     fun summaryWithMissingActivityCountsZero() {
         val s = Json.summary("""{ "date": "2026-10-30", "seconds": { "walk": 12 } }""")
         assertEquals(0, s.runSeconds)
+        assertEquals(0, s.idleSeconds)
     }
 
     @Test

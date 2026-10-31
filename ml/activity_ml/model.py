@@ -12,6 +12,9 @@ import torch
 from torch import nn
 
 CHANNELS = ("ax", "ay", "az", "gx", "gy", "gz", "|a|", "|g|")
+# Output classes, in order. walk/run come from the Kaggle data (activity 0/1); idle
+# (standing still) only from recordings made with the board (data/own, M7).
+CLASSES = ("walk", "run", "idle")
 
 
 def add_magnitudes(windows: np.ndarray) -> np.ndarray:
@@ -28,7 +31,14 @@ def channel_stats(windows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 class ActivityNet(nn.Module):
-    def __init__(self, mean: np.ndarray, std: np.ndarray, width: int = 16, kernel: int = 3):
+    def __init__(
+        self,
+        mean: np.ndarray,
+        std: np.ndarray,
+        width: int = 16,
+        kernel: int = 3,
+        n_classes: int = 2,
+    ):
         super().__init__()
         self.register_buffer("mean", torch.as_tensor(mean, dtype=torch.float32))
         self.register_buffer("std", torch.as_tensor(std, dtype=torch.float32))
@@ -39,11 +49,11 @@ class ActivityNet(nn.Module):
             nn.ReLU(),
             nn.AdaptiveAvgPool1d(1),
             nn.Flatten(),
-            nn.Linear(width, 2),
+            nn.Linear(width, n_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """(N, W, 6) raw windows → (N, 2) logits."""
+        """(N, W, 6) raw windows → (N, n_classes) logits."""
         acc = torch.linalg.vector_norm(x[..., :3], dim=-1, keepdim=True)
         gyr = torch.linalg.vector_norm(x[..., 3:], dim=-1, keepdim=True)
         features = (torch.cat([x, acc, gyr], dim=-1) - self.mean) / self.std

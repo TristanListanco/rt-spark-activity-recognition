@@ -32,7 +32,7 @@ private class FakeSource(vararg latest: () -> Prediction?) : ActivitySource {
     }
 
     override suspend fun history(settings: AppSettings, limit: Int, beforeMs: Long?) = emptyList<Prediction>()
-    override suspend fun summary(settings: AppSettings) = DailySummary("2026-10-31", 60, 30)
+    override suspend fun summary(settings: AppSettings) = DailySummary("2026-10-31", 60, 30, 15)
     override suspend fun health(baseUrl: String) = Unit
 }
 
@@ -54,7 +54,7 @@ class LiveViewModelTest {
         val state = vm.state.first { it.status != LiveStatus.Loading }
         assertEquals(LiveStatus.Ok, state.status)
         assertEquals(running, state.prediction)
-        assertEquals(DailySummary("2026-10-31", 60, 30), state.summary)
+        assertEquals(DailySummary("2026-10-31", 60, 30, 15), state.summary)
         assertFalse(state.isStale)
     }
 

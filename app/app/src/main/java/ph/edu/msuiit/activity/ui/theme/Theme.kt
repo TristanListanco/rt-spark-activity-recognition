@@ -11,7 +11,8 @@ import androidx.compose.ui.graphics.Color
 
 /*
  * The project's palette, shared with the charts (docs/ml), the web page and the board's
- * LCD: blue = walking, orange = running, neutral surfaces and inks. Dark mode uses the
+ * LCD: blue = walking, orange = running, green = idle, neutral surfaces and inks. Grey
+ * means no live prediction (connecting, no data, stale). Dark mode uses the
  * palette's own dark steps rather than inverted colours.
  */
 
@@ -43,17 +44,20 @@ private val DarkScheme = darkColorScheme(
     outlineVariant = Color(0xFF2C2C2A),
 )
 
-/** Colours that identify an activity everywhere in the app. */
-data class ActivityColors(val walk: Color, val run: Color, val idle: Color) {
+/** Colours that identify an activity everywhere in the app; [inactive] when there is none. */
+data class ActivityColors(val walk: Color, val run: Color, val idle: Color, val inactive: Color) {
     fun of(activity: String): Color = when (activity) {
         "walk" -> walk
         "run" -> run
-        else -> idle
+        "idle" -> idle
+        else -> inactive
     }
 }
 
-private val LightActivity = ActivityColors(Color(0xFF2A78D6), Color(0xFFEB6834), Color(0xFF6E6D69))
-private val DarkActivity = ActivityColors(Color(0xFF3987E5), Color(0xFFD95926), Color(0xFF4A4A4A))
+private val LightActivity =
+    ActivityColors(Color(0xFF2A78D6), Color(0xFFEB6834), Color(0xFF0E7D58), Color(0xFF6E6D69))
+private val DarkActivity =
+    ActivityColors(Color(0xFF3987E5), Color(0xFFD95926), Color(0xFF199E70), Color(0xFF4A4A4A))
 
 val LocalActivityColors = staticCompositionLocalOf { LightActivity }
 

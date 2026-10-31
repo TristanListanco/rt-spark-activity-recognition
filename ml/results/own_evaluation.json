@@ -1,0 +1,265 @@
+{
+  "own_data": {
+    "samples": 2320,
+    "sessions_per_label": {
+      "idle": 1,
+      "walk": 1,
+      "run": 1
+    },
+    "windows": 2233
+  },
+  "kaggle_trained_on_own": {
+    "baseline": {
+      "walk_run_accuracy": 0.5402,
+      "windows": 1257,
+      "walk_recall": 0.1512,
+      "run_recall": 1.0,
+      "idle_predicted_as": {
+        "run": 1.0
+      }
+    },
+    "baseline_rotate": {
+      "walk_run_accuracy": 0.9037,
+      "windows": 1257,
+      "walk_recall": 0.8223,
+      "run_recall": 1.0,
+      "idle_predicted_as": {
+        "walk": 0.9723,
+        "run": 0.0277
+      }
+    },
+    "cnn": {
+      "walk_run_accuracy": 0.5282,
+      "windows": 1257,
+      "walk_recall": 0.1292,
+      "run_recall": 1.0,
+      "idle_predicted_as": {
+        "run": 1.0
+      }
+    },
+    "cnn_mirror": {
+      "walk_run_accuracy": 0.5298,
+      "windows": 1257,
+      "walk_recall": 0.1322,
+      "run_recall": 1.0,
+      "idle_predicted_as": {
+        "run": 1.0
+      }
+    },
+    "cnn_rotate": {
+      "walk_run_accuracy": 0.996,
+      "windows": 1257,
+      "walk_recall": 0.9927,
+      "run_recall": 1.0,
+      "idle_predicted_as": {
+        "run": 0.7203,
+        "walk": 0.2797
+      }
+    },
+    "deployed_m2_onnx": {
+      "walk_run_accuracy": 0.996,
+      "windows": 1257,
+      "walk_recall": 0.9927,
+      "run_recall": 1.0,
+      "idle_predicted_as": {
+        "run": 0.7203,
+        "walk": 0.2797
+      }
+    }
+  },
+  "three_class_blocked_cv": {
+    "chosen": "w20_repeat10_balanced",
+    "variants": {
+      "w10_repeat10_balanced": {
+        "board_accuracy": 0.9413,
+        "board_walk_run_accuracy": 0.9419,
+        "board_recall": {
+          "walk": 0.8928,
+          "run": 1.0,
+          "idle": 0.9406
+        },
+        "board_confusion": [
+          [
+            608,
+            1,
+            72
+          ],
+          [
+            0,
+            576,
+            0
+          ],
+          [
+            58,
+            0,
+            918
+          ]
+        ],
+        "kaggle_heldout_days_accuracy": 0.9939,
+        "kaggle_windows_predicted_idle": 0.0004,
+        "classes": [
+          "walk",
+          "run",
+          "idle"
+        ],
+        "settings": {
+          "window": 10,
+          "repeat": 10,
+          "balance_classes": true
+        }
+      },
+      "w10_repeat10_unweighted": {
+        "board_accuracy": 0.9463,
+        "board_walk_run_accuracy": 0.9682,
+        "board_recall": {
+          "walk": 0.9413,
+          "run": 1.0,
+          "idle": 0.918
+        },
+        "board_confusion": [
+          [
+            641,
+            0,
+            40
+          ],
+          [
+            0,
+            576,
+            0
+          ],
+          [
+            80,
+            0,
+            896
+          ]
+        ],
+        "kaggle_heldout_days_accuracy": 0.9939,
+        "kaggle_windows_predicted_idle": 0.0004,
+        "classes": [
+          "walk",
+          "run",
+          "idle"
+        ],
+        "settings": {
+          "window": 10,
+          "repeat": 10,
+          "balance_classes": false
+        }
+      },
+      "w10_repeat5_unweighted": {
+        "board_accuracy": 0.9297,
+        "board_walk_run_accuracy": 0.9419,
+        "board_recall": {
+          "walk": 0.8928,
+          "run": 1.0,
+          "idle": 0.9139
+        },
+        "board_confusion": [
+          [
+            608,
+            0,
+            73
+          ],
+          [
+            0,
+            576,
+            0
+          ],
+          [
+            84,
+            0,
+            892
+          ]
+        ],
+        "kaggle_heldout_days_accuracy": 0.993,
+        "kaggle_windows_predicted_idle": 0.0005,
+        "classes": [
+          "walk",
+          "run",
+          "idle"
+        ],
+        "settings": {
+          "window": 10,
+          "repeat": 5,
+          "balance_classes": false
+        }
+      },
+      "w20_repeat10_balanced": {
+        "board_accuracy": 0.9723,
+        "board_walk_run_accuracy": 0.9701,
+        "board_recall": {
+          "walk": 0.9449,
+          "run": 1.0,
+          "idle": 0.9752
+        },
+        "board_confusion": [
+          [
+            634,
+            0,
+            37
+          ],
+          [
+            0,
+            566,
+            0
+          ],
+          [
+            24,
+            0,
+            942
+          ]
+        ],
+        "kaggle_heldout_days_accuracy": 0.997,
+        "kaggle_windows_predicted_idle": 0.0002,
+        "classes": [
+          "walk",
+          "run",
+          "idle"
+        ],
+        "settings": {
+          "window": 20,
+          "repeat": 10,
+          "balance_classes": true
+        }
+      },
+      "w20_repeat10_unweighted": {
+        "board_accuracy": 0.9605,
+        "board_walk_run_accuracy": 0.9774,
+        "board_recall": {
+          "walk": 0.9583,
+          "run": 1.0,
+          "idle": 0.9389
+        },
+        "board_confusion": [
+          [
+            643,
+            0,
+            28
+          ],
+          [
+            0,
+            566,
+            0
+          ],
+          [
+            59,
+            0,
+            907
+          ]
+        ],
+        "kaggle_heldout_days_accuracy": 0.9985,
+        "kaggle_windows_predicted_idle": 0.0002,
+        "classes": [
+          "walk",
+          "run",
+          "idle"
+        ],
+        "settings": {
+          "window": 20,
+          "repeat": 10,
+          "balance_classes": false
+        }
+      }
+    }
+  }
+}

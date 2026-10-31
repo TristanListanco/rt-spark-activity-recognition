@@ -4,10 +4,11 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** "Walking" / "Running", or the raw label for anything else. */
+/** "Walking" / "Running" / "Idle", or the raw label for anything else. */
 fun activityName(activity: String): String = when (activity) {
     "walk" -> "Walking"
     "run" -> "Running"
+    "idle" -> "Idle"
     else -> activity.replaceFirstChar { it.uppercase() }
 }
 

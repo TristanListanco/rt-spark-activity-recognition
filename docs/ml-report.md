@@ -1,16 +1,20 @@
-# ML report: walk/run classifier
+# ML report: walk/run/idle classifier
 
-How the model behind the activity predictions was built, tested and chosen. Every number here comes from `ml/results/dataset_facts.json` and `ml/results/evaluation.json`, which `ml/explore.py` and `ml/evaluate.py` regenerate.
+How the model behind the activity predictions was built, tested and chosen. Every number here comes from `ml/results/dataset_facts.json`, `ml/results/evaluation.json` and `ml/results/own_evaluation.json`, which `ml/explore.py`, `ml/evaluate.py` and `ml/evaluate_own.py` regenerate.
+
+Sections 1–9 are the M2 work on the Kaggle data (two classes, walk and run). Section 10 tests those models on data recorded with the RT-Spark and adds a third class, idle; the deployed model is now that 3-class model.
 
 ## Summary
 
 - **Data:** the Kaggle run-or-walk dataset: 88,588 samples from one person wearing an iPhone on the wrist, recorded on 12 days.
 - **Units and rate, settled from the data:** 5 Hz; acceleration in g *with gravity included*; angular rate in rad/s. These are now fixed in [CONTRACTS.md](CONTRACTS.md), and the firmware must send the same.
-- **Deployed model:** a 1D-CNN over 2 s windows (10 samples), trained with left/right mirroring and random 3D rotations.
+- **M2 model:** a 1D-CNN over 2 s windows (10 samples), trained with left/right mirroring and random 3D rotations.
   - 1,218 parameters, a 30 KB ONNX file, about 0.01 ms per prediction on a laptop CPU.
   - **99.71%** accuracy on unseen recording days, and **99.70%** when the unseen day's data is also rotated to simulate a differently mounted device.
+- **On the RT-Spark (M7, section 10):** that model scores **99.6%** on walking and running recorded with the board. The model trained without rotations scores 53%, which confirms the main lesson below.
+- **Deployed model (M7):** the same CNN with a third class, **idle**, over 4 s windows (20 samples), trained on the Kaggle data plus about 8 minutes of board recordings. **97.2%** on held-out stretches of the board recordings (idle 97.5%, walk 94.5%, run 100%), still 99.7% on unseen Kaggle days.
 - **The main lesson:** every model trained *without* rotations reaches 99.9% on the dataset but drops to **~52–58%**, coin-flip level, once the device orientation changes. The RT-Spark will not be worn exactly like the iPhone, so rotation training is what makes the model usable on the board.
-- **Honest caveat:** a simpler model that ignores time order (logistic regression on window statistics), when also trained with rotations, is slightly *more* accurate on this dataset (99.88% vs 99.70%). Section 5 explains why the CNN is still the deployed model, and M7 re-tests both on data recorded with the board.
+- **Honest caveat:** a simpler model that ignores time order (logistic regression on window statistics), when also trained with rotations, is slightly *more* accurate on this dataset (99.88% vs 99.70%). Section 5 explains why the CNN was deployed anyway. On the board data the CNN is clearly better (99.6% vs 90.4%, section 10).
 
 ## 1. Dataset
 
@@ -118,7 +122,7 @@ Its worst single day scores 99.0%, both normally and rotated.
 - **The gap is small** (99.70% vs 99.88%), and this dataset has one person and one device. Which model transfers better to a different person and board is still an open question.
 - **M7 will settle it with real data.** I'll record walking and running with the RT-Spark and re-test both models. If the baseline is clearly better on board data, it can be exported the same way (logistic regression is a single linear layer).
 
-**2 s windows (W = 10) instead of 4 s.** The label reacts about 2 s faster when you change pace, for a 0.15-point accuracy cost.
+**2 s windows (W = 10) instead of 4 s.** The label reacts about 2 s faster when you change pace, for a 0.15-point accuracy cost. (M7 revisits this: with an idle class, 4 s windows are clearly better; see section 10.)
 
 ## 6. The lab's design questions
 
@@ -129,19 +133,22 @@ Its worst single day scores 99.0%, both normally and rotated.
 
 ## 7. Deployed model
 
+The M2 model was a 2-class version of this (30,634 bytes, input (batch, 10, 6)). Since M7 it is:
+
 | | |
 |---|---|
-| File | `ml/models/model.onnx` (30,634 bytes), described by `ml/models/model_meta.json` |
-| Input `imu` | float32 (batch, 10, 6): raw `[ax, ay, az, gx, gy, gz]` in g and rad/s, 5 Hz, oldest sample first |
-| Output `probs` | float32 (batch, 2): probabilities for `[walk, run]` |
-| Check | ONNX Runtime output matches PyTorch to within 5×10⁻⁷ |
+| File | `ml/models/model.onnx` (30,702 bytes), described by `ml/models/model_meta.json` |
+| Input `imu` | float32 (batch, 20, 6): raw `[ax, ay, az, gx, gy, gz]` in g and rad/s, 5 Hz, oldest sample first |
+| Output `probs` | float32 (batch, 3): probabilities for `[walk, run, idle]` |
+| Parameters | 1,235 |
+| Check | ONNX Runtime output matches PyTorch to within 9×10⁻⁷ |
 | Speed | ≈ 0.01 ms per window (ONNX Runtime, CPU) |
 
 ## 8. Limitations
 
-- **One person and one phone.** Results across days and wrists can't show how the model handles other people or other sensors. The board recordings in M7 are the real test.
+- **One person and one phone.** Results across days and wrists can't show how the model handles other people or other sensors. The board recordings in M7 are the real test (section 10), but they are one more person, one session per activity.
 - **5 Hz sampling** captures movement up to 2.5 Hz. Arm swing (about 1 Hz) is well covered; finer detail of each footstep is not.
-- **Two classes only.** Standing still is not a class, so it will be labelled as whichever of walk or run it looks more like. Adding an "idle" class would need data recorded for it.
+- **Idle comes from one recording.** The M2 model had no idle class, so standing still was labelled run or walk (section 10). The idle class added in M7 is learned from a single 3-minute session of standing still with the board on the wrist, so other still postures (sitting, lying down, the board on a table) may look different to it.
 
 ## 9. Reproduce
 
@@ -151,10 +158,74 @@ uv sync                                  # Python 3.12 environment from uv.lock
 # put the Kaggle CSV at ml/data/dataset.csv (not committed)
 uv run python explore.py                 # dataset facts + figures
 uv run python evaluate.py                # all protocols, about 13 min on a laptop CPU
-uv run python train.py                   # final model → models/model.onnx
+# record board data with tools/record.py into ml/data/own/ (not committed)
+uv run python evaluate_own.py            # section 10, about 4 min; run before train.py
+uv run python train.py                   # final 3-class model → models/model.onnx
+uv run python train.py --own none --window 10   # the 2-class M2 model instead
 uv run pytest                            # preprocessing, model and exported-file tests
 ```
 
 ## 10. Results on board data (M7)
 
-_To be added after recording with the RT-Spark._
+### Recording
+
+I wore the RT-Spark strapped to my wrist, screen facing outward, in one fixed position, and labelled the stream with the board's buttons (LEFT walk, RIGHT run, UP idle, DOWN stop; `firmware/applications/label.c`). `tools/record.py` saved the labelled samples. One session per activity, on 2026-10-31:
+
+| Activity | Duration | Instruction |
+|---|---|---|
+| idle | 201 s | stand still |
+| walk | 142 s | walk at a normal pace |
+| run | 121 s | run or jog |
+
+That is 2,320 samples at 5 Hz. The first and last 2 s of each session are dropped, because around a button press I was still starting or stopping. This leaves 2,233 windows of 10 samples (2,203 of 20).
+
+### Kaggle-trained models on the board
+
+Each model type from section 4 is trained on all of the Kaggle data and tested on the board recordings. These models only know walk and run, so for idle the table shows what they predict instead.
+
+| Model (trained on Kaggle only) | Walk/run accuracy | Walk recall | Run recall | Idle predicted as |
+|---|---|---|---|---|
+| Statistics baseline | 54.0% | 15.1% | 100% | run 100% |
+| Statistics baseline, rotations | 90.4% | 82.2% | 100% | walk 97% |
+| CNN | 52.8% | 12.9% | 100% | run 100% |
+| CNN, mirror | 53.0% | 13.2% | 100% | run 100% |
+| **CNN, rotations (the M2 model)** | **99.6%** | **99.3%** | **100%** | run 72%, walk 28% |
+
+- **Rotation training is what makes the model work on the board.** Without it, every model calls nearly everything "run". This is the failure section 4 predicted with simulated rotations, now seen on real data.
+- **This settles the question left open in section 5.** On the Kaggle data the statistics baseline was slightly better; on the board, the temporal CNN is clearly better (99.6% vs 90.4%). It is the model that transfers to a new person and device.
+- **Standing still needs its own class.** The M2 model labels 72% of idle windows "run". On the LCD and in the app, standing still showed as "Running".
+
+### Adding the idle class
+
+The CNN now has three outputs, `[walk, run, idle]`. It is trained on the Kaggle walk/run windows plus the board windows, with the same mirror-and-rotate augmentation. The board data is a few minutes against hours of Kaggle data, so each board window is repeated 10 times (each copy gets a different random rotation). I also tried weighting the loss by inverse class frequency ("balanced"), since idle is the rarest class.
+
+**How it is tested.** With one session per activity, the board data can't be split by session. Instead each session is cut into 4 consecutive time blocks, and each block is predicted by a model trained without it. Training windows within 2 s (W = 10) or 4 s (W = 20) of a test block are also left out, so no training window shares samples with a test window. Each fold also holds out 3 of the 12 Kaggle days, to check that walk/run on the Kaggle data doesn't get worse.
+
+| Variant | Board accuracy | Walk | Run | Idle | Unseen Kaggle days | Kaggle windows called idle |
+|---|---|---|---|---|---|---|
+| W = 10, repeat 10, balanced | 94.1% | 89.3% | 100% | 94.1% | 99.39% | 0.04% |
+| W = 10, repeat 10 | 94.6% | 94.1% | 100% | 91.8% | 99.39% | 0.04% |
+| W = 10, repeat 5 | 93.0% | 89.3% | 100% | 91.4% | 99.30% | 0.05% |
+| **W = 20, repeat 10, balanced** | **97.2%** | 94.5% | 100% | **97.5%** | 99.70% | 0.02% |
+| W = 20, repeat 10 | 96.1% | 95.8% | 100% | 93.9% | 99.85% | 0.02% |
+
+Confusion matrix of the chosen variant on the board data (rows = truth):
+
+| | → walk | → run | → idle |
+|---|---|---|---|
+| **walk** | 634 | 0 | 37 |
+| **run** | 0 | 566 | 0 |
+| **idle** | 24 | 0 | 942 |
+
+- **Every error is walk ↔ idle.** Running is never confused with anything. Walking and standing are the two low-motion activities, so a stretch of walking with little arm swing, or fidgeting while standing, is the likely cause (not checked window by window).
+- **4 s windows (W = 20) are now worth their delay.** With two classes, W = 20 gained only 0.15 points (section 5). With idle, a 2 s window often can't tell a pause in arm swing from standing still: 4 s windows raise board accuracy from 94.1% to 97.2%. The cost is that the label reacts about 2 s later.
+- **The Kaggle data is not hurt:** 99.7% on unseen Kaggle days, and only 0.02% of Kaggle walk/run windows are called idle.
+
+**Deployed:** W = 20, repeat 10, balanced, trained on all Kaggle data and all board recordings (`ml/train.py`). As a sanity check, 200 simulated windows of a motionless board (gravity in a random direction plus sensor-sized noise) are all classified idle.
+
+### Caveats
+
+- **The numbers are optimistic.** The variant was picked using the same folds that score it, and the test blocks come from the same three sessions (same day, same strap position) as the training blocks. A new session on another day is likely to score lower.
+- **One wearer, one session per activity.** Recording more sessions, ideally on different days, would allow a proper leave-one-session-out test.
+- **The deployed model saw all the board data,** so it has no held-out board test of its own. The end-to-end check with the board on the wrist (M7/M8) is its real test.
+

@@ -15,7 +15,7 @@ struct net_status
     rt_uint32_t sent, skipped, failed;
 
     rt_bool_t has_prediction;   /* RT_FALSE until the first prediction arrives */
-    char activity[8];           /* "walk" or "run" */
+    char activity[8];           /* "walk", "run" or "idle" */
     int confidence_pct;
     rt_uint32_t prediction_age_ms;
 };

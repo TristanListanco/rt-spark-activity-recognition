@@ -109,18 +109,19 @@ def test_summary_counts_seconds_within_the_local_day(client, db):
     insert(db, "rtspark-01", day_start, "walk")
     insert(db, "rtspark-01", day_start.replace(hour=8), "walk")
     insert(db, "rtspark-01", day_start.replace(hour=9), "run")
+    insert(db, "rtspark-01", day_start.replace(hour=9, second=1), "idle")
     insert(db, "rtspark-01", day_start.replace(day=31, hour=23, minute=59, second=59), "run")
     insert(db, "rtspark-01", day_start.replace(month=11, day=1), "walk")
     insert(db, "other", day_start.replace(hour=10), "walk")
 
     body = client.get("/api/summary?device_id=rtspark-01&date=2026-10-31").get_json()
-    assert body == {"date": "2026-10-31", "seconds": {"walk": 2, "run": 2}}
+    assert body == {"date": "2026-10-31", "seconds": {"walk": 2, "run": 2, "idle": 1}}
 
 
 @needs_db
 def test_summary_defaults_to_today_and_reports_zeros(client):
     body = client.get("/api/summary?device_id=rtspark-01").get_json()
-    assert body == {"date": NOW.date().isoformat(), "seconds": {"walk": 0, "run": 0}}
+    assert body == {"date": NOW.date().isoformat(), "seconds": {"walk": 0, "run": 0, "idle": 0}}
 
 
 @needs_db

@@ -15,6 +15,7 @@
       --hairline: #e1e0d9;
       --walk: #2a78d6;
       --run: #eb6834;
+      --idle: #0e7d58;
       --alert-bg: #fdecea;
       --alert-ink: #8a1c13;
     }
@@ -27,6 +28,7 @@
         --hairline: #2c2c2a;
         --walk: #3987e5;
         --run: #d95926;
+        --idle: #199e70;
         --alert-bg: #3a1714;
         --alert-ink: #ffb4a9;
       }
@@ -58,6 +60,7 @@
     }
     [data-activity="walk"] .swatch { background: var(--walk); }
     [data-activity="run"] .swatch { background: var(--run); }
+    [data-activity="idle"] .swatch { background: var(--idle); }
     .label { font-size: clamp(2.5rem, 12vw, 4.5rem); font-weight: 700; line-height: 1.1; margin: 0; }
     .meta { color: var(--ink-2); margin: 0.25rem 0 0; }
     .stale .label { opacity: 0.45; }
@@ -87,6 +90,7 @@
     }
     .dot.walk { background: var(--walk); }
     .dot.run { background: var(--run); }
+    .dot.idle { background: var(--idle); }
     .visually-hidden {
       position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden;
       clip-path: inset(50%); white-space: nowrap;
@@ -117,6 +121,7 @@
       <dl>
         <dt>Walking</dt><dd id="walk-time">—</dd>
         <dt>Running</dt><dd id="run-time">—</dd>
+        <dt>Idle</dt><dd id="idle-time">—</dd>
       </dl>
     </section>
 
@@ -131,7 +136,7 @@
 
   <script>
     const DEVICE = new URLSearchParams(location.search).get("device") || "rtspark-01";
-    const NAMES = { walk: "Walking", run: "Running" };
+    const NAMES = { walk: "Walking", run: "Running", idle: "Idle" };
     const STALE_AFTER_MS = 10_000;
     const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: "medium" });
     const $ = (id) => document.getElementById(id);
@@ -219,6 +224,7 @@
         renderHistory(history ?? []);
         $("walk-time").textContent = duration(summary.seconds.walk ?? 0);
         $("run-time").textContent = duration(summary.seconds.run ?? 0);
+        $("idle-time").textContent = duration(summary.seconds.idle ?? 0);
       } catch {
         setApiDown(true);
       }

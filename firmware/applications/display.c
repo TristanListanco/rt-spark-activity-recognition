@@ -5,8 +5,8 @@
  *                                       "REC WALK" etc. while recording training data
  *   ┌──────────────────────────────┐
  *   │           RUNNING            │    the cloud's latest prediction, coloured
- *   │        97% confident         │    blue (walk) / orange (run); grey if none
- *   └──────────────────────────────┘    has arrived for 5 s
+ *   │        97% confident         │    blue (walk) / orange (run) / green (idle);
+ *   └──────────────────────────────┘    grey if none has arrived for 5 s
  *   Wi-Fi  HomeWiFi
  *   IP     192.168.1.50
  *   MQTT   online
@@ -56,7 +56,8 @@
 #define C_MUTED 0x8C30 /* #898781 */
 #define C_WALK  0x3C3C /* #3987e5 */
 #define C_RUN   0xDAC4 /* #d95926 */
-#define C_IDLE  0x4A49 /* #4a4a4a: no recent prediction */
+#define C_IDLE  0x1CEE /* #199e70 */
+#define C_NONE  0x4A49 /* #4a4a4a: no recent prediction */
 #define C_GOOD  0x0D01 /* #0ca30c */
 #define C_BAD   0xE32C /* #e66767 */
 #define C_WHITE 0xFFFF
@@ -141,7 +142,7 @@ static void draw_header(void)
     if (label != RT_NULL)
     {
         /* recording training data (label.c): make it impossible to miss */
-        rt_uint16_t colour = rt_strcmp(label, "run") == 0 ? C_RUN : rt_strcmp(label, "walk") == 0 ? C_WALK : C_INK;
+        rt_uint16_t colour = rt_strcmp(label, "run") == 0 ? C_RUN : rt_strcmp(label, "walk") == 0 ? C_WALK : C_IDLE;
         lcd_set_color(C_BG, colour);
         lcd_show_string(MARGIN, 6, FONT_S, "REC %-8s", rt_strcmp(label, "walk") == 0 ? "WALK"
                                                        : rt_strcmp(label, "run") == 0  ? "RUN"
@@ -176,12 +177,17 @@ static void draw_panel(const struct net_status *st)
         title = "WALKING";
     else if (strcmp(st->activity, "run") == 0)
         title = "RUNNING";
+    else if (strcmp(st->activity, "idle") == 0)
+        title = "IDLE";
     else
         title = st->activity;
 
-    colour = C_IDLE;
+    colour = C_NONE;
     if (kind == PANEL_LIVE)
-        colour = strcmp(st->activity, "run") == 0 ? C_RUN : C_WALK;
+        colour = strcmp(st->activity, "run") == 0    ? C_RUN
+                 : strcmp(st->activity, "walk") == 0 ? C_WALK
+                 : strcmp(st->activity, "idle") == 0 ? C_IDLE
+                                                     : C_NONE;
 
     /* Background and title: only when the state or the activity changes. */
     if (kind != shown.kind || strcmp(st->activity, shown.activity) != 0)

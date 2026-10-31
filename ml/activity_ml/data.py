@@ -62,3 +62,48 @@ def make_windows(
             )
         )
     return np.concatenate(xs), np.concatenate(ys), pd.concat(info, ignore_index=True)
+
+
+OWN_COLUMNS = ["ax", "ay", "az", "gx", "gy", "gz"]
+
+
+def load_own(paths: list[Path]) -> pd.DataFrame:
+    """Labelled recordings from the board (tools/record.py), split into sessions.
+
+    A session is a run of samples with the same label and no gap over 3 s. Each sample's
+    time is its batch timestamp plus 200 ms per position in the batch (5 Hz).
+    """
+    df = pd.concat([pd.read_csv(p) for p in paths], ignore_index=True)
+    df = df.drop_duplicates(["device_id", "batch_ts_ms", "sample_index"])
+    df = df.sort_values(["batch_ts_ms", "sample_index"], kind="stable").reset_index(drop=True)
+    df["t"] = df["batch_ts_ms"] + df["sample_index"] * 200
+    gap = df["t"].diff().fillna(0)
+    df["session"] = ((df["label"] != df["label"].shift()) | (gap > 3000)).cumsum() - 1
+    return df
+
+
+def own_windows(
+    df: pd.DataFrame, window: int, trim: int = 10
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Windows (M, window, 6), string labels, the time (ms) of each window's last sample,
+    and each window's session. Windows are consecutive (stride 1) within a session.
+
+    The first and last `trim` samples (2 s) of each session are dropped: around a button
+    press the wearer is still starting or stopping the activity.
+    """
+    xs, labels, times, sessions = [], [], [], []
+    for session, rows in df.groupby("session", sort=True):
+        rows = rows.iloc[trim : len(rows) - trim]
+        windows = sliding_windows(rows[OWN_COLUMNS].to_numpy(), window)
+        if len(windows) == 0:
+            continue
+        xs.append(windows)
+        labels.append(np.full(len(windows), rows["label"].iloc[0]))
+        times.append(rows["t"].to_numpy()[window - 1 :])
+        sessions.append(np.full(len(windows), session))
+    return (
+        np.concatenate(xs),
+        np.concatenate(labels),
+        np.concatenate(times),
+        np.concatenate(sessions),
+    )

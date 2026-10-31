@@ -3,7 +3,7 @@
 The formats each part of the system relies on: firmware → MQTT → classifier → database → API → app.
 If you change anything here, update every consumer in the same commit, bump the version, and add a line to the changelog at the bottom.
 
-Version: **0.8**
+Version: **0.9**
 
 Values marked **provisional** are checked during the ML step (M2) and then finalized.
 
@@ -27,7 +27,7 @@ These must match the Kaggle run-or-walk dataset (https://www.kaggle.com/vmalyi/r
 | Gyroscope unit | **rad/s** | \|ω\| averages 1.9 (walk) / 2.7 (run), max 11. In deg/s these would be in the hundreds |
 | Axis mapping | board X/Y/Z → dataset x/y/z | M4 checks with the board on the wrist. In the dataset, gravity lies along −y when the arm hangs down |
 | Sample order | `[ax, ay, az, gx, gy, gz]` | fixed |
-| Window `W` | **10 samples (2 s)** | M2 compared 10 and 20. 20 is 0.15 points more accurate but reacts about 2 s slower (`docs/ml-report.md`, section 5) |
+| Window `W` | **20 samples (4 s)** | M2 used 10 (2 s): on the Kaggle data, 20 was only 0.15 points better and reacts about 2 s slower. With the idle class and board recordings (M7), 20 is clearly better: 97.2% vs 94.1% on held-out board data, idle recall 97.5% vs 94.1% (`docs/ml-report.md`, section 10) |
 | Prediction rate | once per second (stride = `R` samples) | fixed |
 
 The firmware converts raw IMU readings to these units **before** publishing; nothing else is done to the data on the board. The cloud cuts the stream into windows with `ml/activity_ml/preprocess.py`. Everything after that (magnitude channels, normalization) is inside the exported ONNX model, so training and the live classifier process data identically.
@@ -111,9 +111,9 @@ Returns `404` with `{ "error": "no data" }` if there are no predictions for the 
 
 ### `GET /api/summary?device_id=rtspark-01&date=2026-10-30`
 ```json
-{ "date": "2026-10-30", "seconds": { "walk": 1240, "run": 315 } }
+{ "date": "2026-10-30", "seconds": { "walk": 1240, "run": 315, "idle": 600 } }
 ```
-`date` defaults to today, as a calendar day in `APP_TIMEZONE` (Asia/Manila). There is one prediction per second, so `seconds` is the number of predictions of each activity that day. Both keys are always present.
+`date` defaults to today, as a calendar day in `APP_TIMEZONE` (Asia/Manila). There is one prediction per second, so `seconds` is the number of predictions of each activity that day. All three keys (section 6) are always present.
 
 ### `GET /`
 A small live web page (current activity, today's totals, recent predictions) that polls the endpoints above. `/?device=<id>` shows another device.
@@ -125,7 +125,7 @@ Any error → HTTP 4xx/5xx with `{ "error": "<message>" }`.
 
 How `cloud/classifier` turns the MQTT stream into predictions:
 
-- It keeps the newest `W` = 10 samples per device. The first prediction comes after 2 messages (2 s); after that there is one per message (per second).
+- It keeps the newest `W` = 20 samples per device. The first prediction comes after 4 messages (4 s); after that there is one per message (per second). `W` and the labels are read from `ml/models/model_meta.json`.
 - After a pause longer than 3 s (reconnect, reboot) it starts a fresh window, so a window never joins samples from before and after the pause.
 - Messages whose `rate_hz` differs from the model's (5) are ignored and logged, because the model only understands 5 Hz data.
 - Invalid messages (wrong topic, bad JSON, wrong shape) are logged and dropped.
@@ -133,12 +133,13 @@ How `cloud/classifier` turns the MQTT stream into predictions:
 
 ## 6. Activity labels
 
-| Label | Dataset value |
+| Label | Training data |
 |---|---|
-| `walk` | `activity = 0` |
-| `run` | `activity = 1` |
+| `walk` | Kaggle `activity = 0`, plus board recordings |
+| `run` | Kaggle `activity = 1`, plus board recordings |
+| `idle` | board recordings only (standing or sitting still; the Kaggle data has no idle class) |
 
-Adding a class (e.g. `idle`) needs a version bump, because the app must know the new label to show its icon and colour.
+The model's output order is `[walk, run, idle]` (`ml/activity_ml/model.py`, `CLASSES`). Adding a class needs a version bump, because the app, the web page and the LCD must know the new label to show its name and colour.
 
 ## 7. Database
 
@@ -166,4 +167,5 @@ CREATE INDEX predictions_device_ts ON predictions (device_id, ts DESC);
 | 0.5 | 2026-10-31 | M3: classifier behaviour section, 503 on database outage, meaning of `ts` and `seconds`, web page at `/` |
 | 0.6 | 2026-10-31 | M4: board publishes with QoS 1 (the only QoS RT-Thread's Paho port supports) |
 | 0.7 | 2026-10-31 | Predictions published back to the board on `activity/<device_id>/prediction`, for its LCD |
-| 0.8 | 2026-11-01 | Optional `label` field while recording training data (M7) |
+| 0.8 | 2026-10-31 | Optional `label` field while recording training data (M7) |
+| 0.9 | 2026-10-31 | M7: third class `idle`; `W` = 20 (4 s); `/api/summary` has an `idle` key |

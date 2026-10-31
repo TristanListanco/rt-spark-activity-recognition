@@ -8,6 +8,7 @@ import numpy as np
 import onnxruntime as ort
 import pytest
 
+from activity_ml.model import CLASSES
 from activity_ml.preprocess import AXES, RATE_HZ
 
 MODELS = Path(__file__).resolve().parent.parent / "models"
@@ -34,7 +35,7 @@ def test_checksum_matches(meta):
 def test_meta_matches_contract(meta):
     assert meta["rate_hz"] == RATE_HZ
     assert meta["input"]["axes"] == list(AXES)
-    assert meta["output"]["labels"] == ["walk", "run"]
+    assert meta["output"]["labels"] == list(CLASSES)
     assert meta["input"]["shape"] == ["batch", meta["window"], len(AXES)]
 
 
@@ -48,7 +49,7 @@ def test_outputs_are_probabilities(session, meta, batch):
     rng = np.random.default_rng(0)
     x = rng.normal(size=(batch, meta["window"], len(AXES))).astype(np.float32)
     probs = session.run(None, {meta["input"]["name"]: x})[0]
-    assert probs.shape == (batch, 2)
+    assert probs.shape == (batch, len(meta["output"]["labels"]))
     assert np.all(probs >= 0)
     np.testing.assert_allclose(probs.sum(axis=1), 1.0, rtol=1e-5)
 

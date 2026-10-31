@@ -6,7 +6,7 @@
 [![Firmware](https://github.com/TristanListanco/rt-spark-activity-recognition/actions/workflows/firmware.yml/badge.svg)](https://github.com/TristanListanco/rt-spark-activity-recognition/actions/workflows/firmware.yml)
 [![Android](https://github.com/TristanListanco/rt-spark-activity-recognition/actions/workflows/android.yml/badge.svg)](https://github.com/TristanListanco/rt-spark-activity-recognition/actions/workflows/android.yml)
 
-Laboratory Activity 3: a full-stack IoT system that classifies walking vs. running in real time.
+Laboratory Activity 3: a full-stack IoT system that classifies walking, running and standing still (idle) in real time.
 
 The RT-Spark board streams accelerometer and gyroscope readings over Wi-Fi/MQTT to a cloud service. There, a small 1D-CNN classifies the activity and the result is stored in PostgreSQL. A Flask API serves the results to an Android app.
 
@@ -50,7 +50,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 - [x] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
 - [x] M5: Android app
 - [x] M6: Deployed to an Azure VM
-- [ ] M7: Own data collected, model fine-tuned
+- [x] M7: Own data recorded with the board; idle class added
 - [ ] M8: Final test, demo video
 
 ## Running it
@@ -65,7 +65,7 @@ Needs Docker. Four services run from `cloud/docker-compose.yml`:
 |---|---|---|
 | `mosquitto` | 1883 | MQTT broker; password auth only, credentials from `cloud/.env` |
 | `db` | internal | PostgreSQL 16; schema in `cloud/db/init.sql` |
-| `classifier` | — | Subscribes to `activity/+/imu` and validates each message against the contract. Keeps a 2 s window per device, classifies it once per second with `ml/models/model.onnx` (ONNX Runtime; no PyTorch in the image), and writes the result to `predictions` |
+| `classifier` | — | Subscribes to `activity/+/imu` and validates each message against the contract. Keeps a 4 s window per device, classifies it once per second with `ml/models/model.onnx` (ONNX Runtime; no PyTorch in the image), and writes the result to `predictions` |
 | `api` | 8000 | Flask API over the `predictions` table (contract section 4), plus a live web page at `/` |
 
 ```bash
@@ -132,11 +132,12 @@ cd ml
 uv sync
 uv run python explore.py    # dataset facts + figures (docs/ml/)
 uv run python evaluate.py   # compare models on unseen days, rotated devices, other wrist (~13 min)
+uv run python evaluate_own.py   # test on board recordings in ml/data/own/, pick the 3-class setup (~4 min)
 uv run python train.py      # train the deployed model → models/model.onnx + model_meta.json
 uv run pytest
 ```
 
-The exported model takes raw 2 s windows `(batch, 10, 6)` in g and rad/s and returns `[walk, run]` probabilities. Magnitude channels and normalization happen inside the ONNX file, so the classifier service needs only numpy and ONNX Runtime.
+The exported model takes raw 4 s windows `(batch, 20, 6)` in g and rad/s and returns `[walk, run, idle]` probabilities. Walk and run come from the Kaggle data plus board recordings, idle from board recordings only (`tools/record.py`). Magnitude channels and normalization happen inside the ONNX file, so the classifier service needs only numpy and ONNX Runtime.
 
 ### Firmware
 
@@ -166,9 +167,9 @@ A native Android app (Kotlin, Jetpack Compose, Material 3) that polls the API wi
 |---|---|---|
 | <img src="docs/app/live.png" width="240" alt="Live tab: a large orange card reading Running, 100% confident, updated just now, above today's walking and running totals"> | <img src="docs/app/history.png" width="240" alt="History tab: alternating Walking and Running stretches with time ranges, durations and average confidence"> | <img src="docs/app/offline-dark.png" width="240" alt="Live tab in dark mode with a red banner: Can't reach the server, while still showing the last prediction"> |
 
-- **Live:** the current activity in a large card (blue for walking, orange for running, grey when no data has arrived for 10 s), its confidence and age, and today's walking/running time with a proportional bar. It polls `/api/latest` every second while visible and stops when the app is in the background.
+- **Live:** the current activity in a large card (blue for walking, orange for running, green for idle, grey when no data has arrived for 10 s), its confidence and age, and today's time per activity with a proportional bar. It polls `/api/latest` every second while visible and stops when the app is in the background.
 - **History:** the API's one-prediction-per-second records merged into stretches ("Running · 20:50:41 – 20:51:01 · 21 s · 99%"). Pull to refresh; older pages load as you scroll (`before=` paging).
-- **Settings:** API address and device ID, saved on the phone, with **Test connection** (`/api/health`). The default is `http://10.0.2.2:8000` on the emulator (the computer running it) and `http://172.20.10.2:8000` on a real phone on the iPhone hotspot. On another network, enter the Mac's address there (e.g. `http://192.168.1.44:8000` at home).
+- **Settings:** API address and device ID, saved on the phone, with **Test connection** (`/api/health`). The default is the Azure deployment, `http://rtspark-activity-b2093c.eastasia.cloudapp.azure.com` (build with `-Pactivity.apiUrl=...` to change it). For the local stack, enter the computer's address, e.g. `http://10.0.2.2:8000` on the emulator or `http://192.168.1.44:8000` from a phone on the same Wi-Fi.
 
 ```bash
 cd app
@@ -197,7 +198,9 @@ Each part has its own GitHub Actions workflow in `.github/workflows/`. A workflo
 
 ## Results
 
-Full details in [docs/ml-report.md](docs/ml-report.md). The deployed model is a 1D-CNN with 1,218 parameters (30 KB ONNX, ≈0.01 ms per prediction), trained with left/right mirroring and random 3D rotations:
+Full details in [docs/ml-report.md](docs/ml-report.md). The model is a 1D-CNN (about 1,200 parameters, 30 KB ONNX, ≈0.01 ms per prediction), trained with left/right mirroring and random 3D rotations.
+
+**M2, walk/run on the Kaggle data** (2 s windows):
 
 | Test | Accuracy |
 |---|---|
@@ -205,7 +208,16 @@ Full details in [docs/ml-report.md](docs/ml-report.md). The deployed model is a 
 | Unseen day, device rotated to a random orientation | 99.70% |
 | Train left wrist → test right / train right → test left | 99.62% / 98.82% |
 
-The same CNN trained without rotations also scores 99.9% on unseen days, but drops to 52% once the device is rotated. It learned *how the iPhone was worn* instead of how walking and running move. That is why rotation training matters for the RT-Spark. Results on data recorded with the board are added in M7.
+**M7, on data recorded with the RT-Spark** (about 8 minutes; one session each of walking, running and standing still):
+
+| Test | Accuracy |
+|---|---|
+| M2 model (Kaggle only), walk/run recorded with the board | 99.6% |
+| The same CNN trained without rotations | 52.8% |
+| Deployed 3-class model, held-out stretches of the board recordings | 97.2% (walk 94.5%, run 100%, idle 97.5%) |
+| Deployed 3-class model, unseen Kaggle days | 99.7% |
+
+The CNN trained without rotations learned *how the iPhone was worn* instead of how walking and running move. On the board it calls almost everything "run". With rotation training, the model trained only on iPhone data works on the board. The 2-class model labelled standing still as "run", so M7 added an idle class, learned from the board recordings. The deployed model uses 4 s windows, which separate idle from walking better than 2 s windows (97.2% vs 94.1%). With one session per activity, these board numbers are optimistic (report, section 10).
 
 ## Demo
 

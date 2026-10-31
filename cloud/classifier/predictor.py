@@ -1,7 +1,8 @@
 """Load the exported model and keep a sliding window of samples per device.
 
 The model (ml/models/model.onnx, see docs/ml-report.md) takes raw windows
-(batch, W, 6) in contract units and returns [walk, run] probabilities. The
+(batch, W, 6) in contract units and returns one probability per label in
+model_meta.json (walk, run, idle). W and the labels come from the meta file. The
 feature steps are inside the ONNX file, so this only has to supply the newest
 W samples in order.
 """

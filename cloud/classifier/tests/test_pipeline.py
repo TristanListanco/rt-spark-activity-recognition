@@ -29,10 +29,14 @@ def model() -> Model:
     return Model(MODEL_DIR)
 
 
+def batches_per_window(model: Model) -> int:
+    return model.window // 5  # 1-s batches of 5 samples
+
+
 def test_model_matches_contract(model):
-    assert model.window == 10
+    assert model.window == 20
     assert model.rate_hz == 5
-    assert model.labels == ["walk", "run"]
+    assert model.labels == ["walk", "run", "idle"]
 
 
 def test_model_rejects_tampered_file(tmp_path):
@@ -44,27 +48,31 @@ def test_model_rejects_tampered_file(tmp_path):
 
 
 def test_prediction_is_a_label_with_confidence(model):
-    p = model.predict(RNG.normal(size=(10, 6)))
-    assert p.activity in {"walk", "run"}
-    assert 0.5 <= p.confidence <= 1.0
+    p = model.predict(RNG.normal(size=(model.window, 6)))
+    assert p.activity in model.labels
+    assert 1 / len(model.labels) <= p.confidence <= 1.0
 
 
 def test_first_prediction_after_window_fills(model):
     writer = MemoryWriter()
     classifier = Classifier(model, writer)
-    assert classifier.handle(batch(), now_monotonic=0.0, now_ms=0) is None  # 5 of 10 samples
-    assert classifier.handle(batch(), now_monotonic=1.0, now_ms=0) is not None
-    assert classifier.handle(batch(), now_monotonic=2.0, now_ms=0) is not None
+    n = batches_per_window(model)
+    for t in range(n - 1):
+        assert classifier.handle(batch(), now_monotonic=float(t), now_ms=0) is None  # not full
+    assert classifier.handle(batch(), now_monotonic=float(n - 1), now_ms=0) is not None
+    assert classifier.handle(batch(), now_monotonic=float(n), now_ms=0) is not None
     assert len(writer.rows) == 2
 
 
 def test_devices_have_separate_windows(model):
     writer = MemoryWriter()
     classifier = Classifier(model, writer)
-    classifier.handle(batch("a"), 0.0, 0)
-    classifier.handle(batch("b"), 0.0, 0)
+    n = batches_per_window(model)
+    for t in range(n - 1):
+        classifier.handle(batch("a"), float(t), 0)
+        classifier.handle(batch("b"), float(t), 0)
     assert writer.rows == []
-    classifier.handle(batch("a"), 1.0, 0)
+    classifier.handle(batch("a"), float(n - 1), 0)
     assert [row[0] for row in writer.rows] == ["a"]
 
 
@@ -98,9 +106,10 @@ def test_timestamp_is_newest_sample_or_arrival_time(model):
 
     writer = MemoryWriter()
     classifier = Classifier(model, writer)
-    classifier.handle(batch(ts=0), 0.0, now_ms=111)
-    classifier.handle(batch(ts=0), 1.0, now_ms=222)
-    assert writer.rows[0][1] == 222
+    n = batches_per_window(model)
+    for t in range(n):
+        classifier.handle(batch(ts=0), float(t), now_ms=1000 + t)
+    assert writer.rows[0][1] == 1000 + n - 1  # arrival of the batch that filled the window
 
 
 def test_each_stored_prediction_is_published_back(model):
@@ -108,9 +117,12 @@ def test_each_stored_prediction_is_published_back(model):
 
     sent = []
     classifier = Classifier(model, MemoryWriter(), notify=lambda t, p: sent.append((t, p)))
-    classifier.handle(batch(ts=1_000_000), 0.0, 0)
+    n = batches_per_window(model)
+    for t in range(n - 1):
+        classifier.handle(batch(ts=1_000_000 + 1000 * t), float(t), 0)
     assert sent == []  # window not full yet
-    prediction = classifier.handle(batch(ts=1_001_000), 1.0, 0)
+    last_ts = 1_000_000 + 1000 * (n - 1)
+    prediction = classifier.handle(batch(ts=last_ts), float(n - 1), 0)
     assert len(sent) == 1
     topic, payload = sent[0]
     assert topic == "activity/rtspark-01/prediction"
@@ -118,7 +130,7 @@ def test_each_stored_prediction_is_published_back(model):
     assert body == {
         "activity": prediction.activity,
         "confidence": round(prediction.confidence, 4),
-        "ts": 1_001_800,  # newest sample of the second batch
+        "ts": last_ts + 800,  # newest sample of the batch that filled the window
     }
 
 

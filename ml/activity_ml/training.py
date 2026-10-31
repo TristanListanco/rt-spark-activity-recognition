@@ -7,7 +7,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from torch import nn
 
-from activity_ml.model import ActivityNet, add_magnitudes, channel_stats
+from activity_ml.model import CLASSES, ActivityNet, add_magnitudes, channel_stats
 
 AUGMENTATIONS = ("none", "mirror", "rotate")
 # Training windows overlap heavily at stride 1; every 2nd window trains just as well
@@ -57,17 +57,26 @@ def fit_cnn(
     lr: float = 5e-3,
     width: int = 16,
     seed: int = 0,
+    n_classes: int = 2,
+    balance_classes: bool = False,
 ) -> ActivityNet:
+    """Train the CNN. `balance_classes` weights the loss by inverse class frequency, for
+    training sets where one class (e.g. idle from a single recording) is much rarer."""
     if augmentation not in AUGMENTATIONS:
         raise ValueError(f"augmentation must be one of {AUGMENTATIONS}")
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
 
     mean, std = channel_stats(windows)
-    model = ActivityNet(mean, std, width=width)
+    model = ActivityNet(mean, std, width=width, n_classes=n_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    loss_fn = nn.CrossEntropyLoss()
+    weight = None
+    if balance_classes:
+        counts = np.bincount(labels, minlength=n_classes).astype(np.float64)
+        inverse_frequency = counts.sum() / (n_classes * np.maximum(counts, 1))
+        weight = torch.as_tensor(inverse_frequency, dtype=torch.float32)
+    loss_fn = nn.CrossEntropyLoss(weight=weight)
 
     x_all = torch.as_tensor(windows, dtype=torch.float32)
     y_all = torch.as_tensor(labels, dtype=torch.int64)
@@ -102,3 +111,24 @@ def fit_baseline(windows: np.ndarray, labels: np.ndarray):
     """Logistic regression on window statistics: ignores the order of samples in time."""
     model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
     return model.fit(window_features(windows), labels)
+
+
+def with_own_data(
+    kaggle_windows: np.ndarray,
+    kaggle_labels: np.ndarray,
+    own_windows: np.ndarray,
+    own_labels: np.ndarray,
+    repeat: int = 10,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Kaggle walk/run windows plus board windows (string labels, see model.CLASSES).
+
+    The board recordings are a few minutes against hours of Kaggle data, so they are
+    repeated `repeat` times; each repeat gets a different random rotation/mirroring
+    during training, so the copies aren't identical.
+    """
+    index = {name: i for i, name in enumerate(CLASSES)}
+    own_y = np.array([index[label] for label in own_labels], dtype=np.int64)
+    return (
+        np.concatenate([kaggle_windows, np.repeat(own_windows, repeat, axis=0)]),
+        np.concatenate([kaggle_labels, np.repeat(own_y, repeat)]),
+    )

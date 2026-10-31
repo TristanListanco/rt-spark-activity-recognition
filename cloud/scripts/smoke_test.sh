@@ -23,6 +23,10 @@ set -a
 set +a
 api="http://localhost:${API_PORT:-8000}"
 device="smoke-test-$$"
+messages=12
+# The classifier needs window/5 one-second messages before its first prediction.
+window=$(json 'd["window"]' < "$repo_dir/ml/models/model_meta.json")
+expected=$((messages - window / 5 + 1))
 
 step "Starting the stack"
 "${compose[@]}" up -d --build --wait --wait-timeout 180
@@ -55,16 +59,16 @@ sub_pid=$!
 sleep 1
 "$tmp_dir/venv/bin/python" "$repo_dir/tools/fake_publisher.py" \
   --host localhost --port "${MQTT_PORT:-1883}" --device-id "$device" \
-  --activity alternate --switch-every 6 --count 12
+  --activity alternate --switch-every 6 --count "$messages"
 
-step "Predictions stored (expect 11: the first needs 2 messages to fill the 2 s window)"
+step "Predictions stored (expect $expected: the first needs $((window / 5)) messages to fill the $window-sample window)"
 count=0
 for _ in $(seq 1 20); do
   count=$(curl -fsS "$api/api/history?device_id=$device&limit=50" | json 'len(d)')
-  [ "$count" -ge 11 ] && break
+  [ "$count" -ge "$expected" ] && break
   sleep 0.5
 done
-[ "$count" -ge 11 ] || fail "only $count predictions stored"
+[ "$count" -ge "$expected" ] || fail "only $count predictions stored"
 
 step "Latest prediction is 'run', and the history contains both activities"
 latest=$(curl -fsS "$api/api/latest?device_id=$device" | json 'd["activity"], round(d["confidence"], 2)')
@@ -81,13 +85,13 @@ lines = open(sys.argv[1]).read().split()
 assert len(lines) == 3, lines
 for line in lines:
     msg = json.loads(line)
-    assert set(msg) == {"activity", "confidence", "ts"} and msg["activity"] in ("walk", "run"), msg
+    assert set(msg) == {"activity", "confidence", "ts"} and msg["activity"] in ("walk", "run", "idle"), msg
 print("ok:", lines[-1])
 PY
 
 step "Today's summary counts those seconds"
 total=$(curl -fsS "$api/api/summary?device_id=$device" | json 'sum(d["seconds"].values())')
-[ "$total" -ge 11 ] || fail "summary total is $total"
+[ "$total" -ge "$expected" ] || fail "summary total is $total"
 
 step "Web page"
 curl -fsS "$api/" | grep -q '<title>Live Activity</title>' || fail "index page"
