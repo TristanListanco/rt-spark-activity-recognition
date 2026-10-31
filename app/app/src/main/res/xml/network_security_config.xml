@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The activity API is plain HTTP on the local network (the Mac on the hotspot) and
+  later on the Azure VM's IP (docs/CONTRACTS.md, section 4). Its address is set in
+  the app's Settings, so cleartext can't be limited to one host at build time.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>

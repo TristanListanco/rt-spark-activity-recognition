@@ -48,7 +48,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 - [x] M2: ML model trained and exported
 - [x] M3: Classifier + API working end to end with simulated data
 - [x] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
-- [ ] M5: Android app
+- [x] M5: Android app
 - [ ] M6: Deployed to an Azure VM
 - [ ] M7: Own data collected, model fine-tuned
 - [ ] M8: Final test, demo video
@@ -134,7 +134,29 @@ pio device monitor -p /dev/cu.usbmodem* -b 115200
 On macOS, the first time the board is plugged in you have to click **Allow** on the "Allow accessory to connect?" prompt. The board needs a **2.4 GHz, IPv4** Wi-Fi network; a phone hotspot works.
 
 ### Android app
-_Coming in M5._
+
+A native Android app (Kotlin, Jetpack Compose, Material 3) that polls the API with **Volley**, as the lab recommends. Minimum Android 8.0 (API 26).
+
+| Live | History | API unreachable (dark mode) |
+|---|---|---|
+| <img src="docs/app/live.png" width="240" alt="Live tab: a large orange card reading Running, 100% confident, updated just now, above today's walking and running totals"> | <img src="docs/app/history.png" width="240" alt="History tab: alternating Walking and Running stretches with time ranges, durations and average confidence"> | <img src="docs/app/offline-dark.png" width="240" alt="Live tab in dark mode with a red banner: Can't reach the server, while still showing the last prediction"> |
+
+- **Live:** the current activity in a large card (blue for walking, orange for running, grey when no data has arrived for 10 s), its confidence and age, and today's walking/running time with a proportional bar. It polls `/api/latest` every second while visible and stops when the app is in the background.
+- **History:** the API's one-prediction-per-second records merged into stretches ("Running · 20:50:41 – 20:51:01 · 21 s · 99%"). Pull to refresh; older pages load as you scroll (`before=` paging).
+- **Settings:** API address and device ID, saved on the phone, with **Test connection** (`/api/health`). The default is `http://10.0.2.2:8000` on the emulator (the computer running it) and `http://172.20.10.2:8000` on a real phone on the iPhone hotspot.
+
+```bash
+cd app
+./gradlew installDebug          # build and install on a connected phone or a running emulator
+./gradlew testDebugUnitTest     # 22 unit tests: JSON parsing, history stretches, formatting, Live ViewModel
+./gradlew lintDebug
+```
+
+Or open `app/` in Android Studio. Gradle needs JDK 17 or newer (Android Studio's bundled JDK works: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`). Missing SDK parts (platform 37, build-tools 36) are installed automatically on the first build.
+
+Structure: `data/` holds the Volley client wrapped in coroutines, JSON parsing, the repository (behind an interface, so ViewModels are tested with a fake) and the DataStore settings. `ui/live`, `ui/history` and `ui/settings` each have a ViewModel exposing a `StateFlow`, and `ui/theme` holds the project palette. Notes:
+- `targetSdk` stays at 36: targeting Android 17 may opt in to its local-network restrictions, and this app talks to a server on the local network.
+- Plain HTTP is allowed (`network_security_config.xml`) because the API address is set at runtime.
 
 ## Continuous integration
 

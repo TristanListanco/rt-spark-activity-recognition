@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Lint calls the -v26 suffix redundant (minSdk is 26), but the resource linker
+         (aapt2) fails to find the adaptive launcher icon without it. -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>
