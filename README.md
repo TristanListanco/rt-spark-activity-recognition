@@ -115,44 +115,23 @@ The exported model takes raw 2 s windows `(batch, 10, 6)` in g and rad/s and ret
 
 ### Firmware
 
-The board runs RT-Thread, using its official `stm32f407-rt-spark` board support package (BSP). That package already includes drivers for the on-board RW007 Wi-Fi (SPI2) and ICM-20608 IMU (software I2C). The application code arrives in M4. These are the toolchain steps on macOS (Apple Silicon); none of them need admin rights:
+RT-Thread on the RT-Spark, using RT-Thread's official `stm32f407-rt-spark` board package with its RW007 Wi-Fi and ICM-20608 IMU drivers. The firmware samples at 5 Hz and publishes one MQTT message per second. Details, LED meanings and serial commands: [firmware/README.md](firmware/README.md).
+
+The only prerequisite is the Arm GCC toolchain (GCC 14.2, native on Apple Silicon, no admin rights):
 
 ```bash
-# 1. Arm GCC 14.2 (native arm64) through PlatformIO
 pio pkg install --global --tool "platformio/toolchain-gccarmnoneeabi@1.140201.0"
-
-# 2. RT-Thread Env (menuconfig, pkgs, scons). Same as the official install_macos.sh,
-#    minus its `brew upgrade` of every Homebrew package.
-mkdir -p ~/.env/local_pkgs ~/.env/packages ~/.env/tools
-git clone --depth=1 https://github.com/RT-Thread/packages.git ~/.env/packages/packages
-echo 'source "$PKGS_DIR/packages/Kconfig"' > ~/.env/packages/Kconfig
-git clone --depth=1 https://github.com/RT-Thread/sdk.git ~/.env/packages/sdk
-git clone --depth=1 https://github.com/RT-Thread/env.git ~/.env/tools/scripts
-cp ~/.env/tools/scripts/env.sh ~/.env/env.sh
-
-# 3. RT-Thread source: only the parts this board needs (about 100 MB instead of the full tree)
-git clone --depth 1 --filter=blob:none --sparse https://github.com/RT-Thread/rt-thread.git
-cd rt-thread
-git sparse-checkout set src include libcpu components tools bsp/stm32/libraries bsp/stm32/stm32f407-rt-spark
-
-# 4. Build. env.sh sets RTT_EXEC_PATH=/usr/bin, which is wrong on macOS, so override it.
-cd bsp/stm32/stm32f407-rt-spark
-source ~/.env/env.sh
-export RTT_CC=gcc RTT_EXEC_PATH="$HOME/.platformio/packages/toolchain-gccarmnoneeabi/bin"
-pkgs --update          # downloads the STM32F4 HAL and CMSIS packages
-scons -j8              # → rtthread.bin, rt-thread.elf
 ```
 
-Flash through the on-board ST-Link with PlatformIO's OpenOCD, then open the serial console (115200 baud):
+`firmware/build.sh` does the rest: it fetches RT-Thread at a pinned commit (only the parts this board needs), installs RT-Thread Env if missing, copies this project's code and configuration onto the board package, and builds. It flashes through the on-board ST-Link with PlatformIO's OpenOCD.
 
 ```bash
-OC=~/.platformio/packages/tool-openocd
-$OC/bin/openocd -s $OC/openocd/scripts -f interface/stlink.cfg -f target/stm32f4x.cfg \
-  -c "program rtthread.bin 0x08000000 verify reset exit"
+cp firmware/applications/secrets.example.h firmware/applications/secrets.h   # Wi-Fi + MQTT settings
+firmware/build.sh flash
 pio device monitor -p /dev/cu.usbmodem* -b 115200
 ```
 
-On macOS, the first time the board is plugged in you have to click **Allow** on the "Allow accessory to connect?" prompt.
+On macOS, the first time the board is plugged in you have to click **Allow** on the "Allow accessory to connect?" prompt. The board needs a **2.4 GHz, IPv4** Wi-Fi network; a phone hotspot works.
 
 ### Android app
 _Coming in M5._
@@ -166,7 +145,7 @@ Each part has its own GitHub Actions workflow in `.github/workflows/`. A workflo
 | `repo.yml` | every push/PR | Fails if `.env`, `secrets.h`, keystores or the lab handout are committed, or if any file is over 10 MB. Lints the workflows (actionlint) and all Python (ruff, config in `ruff.toml`) |
 | `cloud.yml` | `cloud/`, `tools/`, `ml/activity_ml/`, `ml/models/` | `pytest` for the API and classifier against a Postgres service (`DATABASE_URL`). Builds the Compose stack and runs `cloud/scripts/smoke_test.sh` |
 | `ml.yml` | `ml/` | `uv sync --locked`, then `pytest` (preprocessing and exported-model checks; no training in CI) |
-| `firmware.yml` | `firmware/` | Builds the RT-Thread image with `arm-none-eabi-gcc` + SCons using `secrets.example.h`, reports flash/RAM size, uploads `rtthread.bin` |
+| `firmware.yml` | `firmware/`, `cloud/classifier/payload.py` | Compiles the firmware's message code on the host and checks its JSON with the cloud classifier's validator. Then `firmware/build.sh` builds the image (pinned RT-Thread, cached between runs) with placeholder secrets, reports flash/RAM size, and uploads `rtthread.bin` |
 | `android.yml` | `app/` | Validates the Gradle wrapper, then `lintDebug testDebugUnitTest assembleDebug`. Uploads the debug APK |
 
 ## Results
