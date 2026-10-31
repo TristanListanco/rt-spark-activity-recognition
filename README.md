@@ -43,7 +43,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 ## Progress
 
 - [x] M0: Repository set up
-- [ ] M1: Local cloud stack (broker, DB, API stub, fake publisher)
+- [x] M1: Local cloud stack (broker, DB, API stub, fake publisher)
 - [ ] M1b: Firmware toolchain builds and flashes the stock BSP
 - [ ] M2: ML model trained and exported
 - [ ] M3: Classifier + API working end to end with simulated data
@@ -58,7 +58,39 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 *Filled in as each part is built.*
 
 ### Cloud stack (local)
-_Coming in M1._
+
+Needs Docker. Four services run from `cloud/docker-compose.yml`:
+
+| Service | Port | Role |
+|---|---|---|
+| `mosquitto` | 1883 | MQTT broker; password auth only, credentials from `cloud/.env` |
+| `db` | internal | PostgreSQL 16; schema in `cloud/db/init.sql` |
+| `classifier` | — | Subscribes to `activity/+/imu`. For now it validates each message against the contract and logs it; the model arrives in M3 |
+| `api` | 8000 | Flask API. For now it serves generated data (30 s walk / 30 s run) so the app can be built early; real data arrives in M3 |
+
+```bash
+cp cloud/.env.example cloud/.env        # then set real passwords
+docker compose -f cloud/docker-compose.yml up -d --build --wait
+
+curl http://localhost:8000/api/health
+curl "http://localhost:8000/api/latest?device_id=rtspark-01"
+```
+
+Simulate the board with `tools/fake_publisher.py`, which reads the MQTT credentials from `cloud/.env`:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
+.venv/bin/python tools/fake_publisher.py                   # alternate walk/run every 30 s
+.venv/bin/python tools/fake_publisher.py --activity run --count 10
+
+# Watch the raw MQTT traffic and what the classifier receives
+mosquitto_sub -h localhost -u device -P <MQTT_PASSWORD> -t 'activity/#' -v
+docker compose -f cloud/docker-compose.yml logs -f classifier
+```
+
+`cloud/scripts/smoke_test.sh` runs all of this end to end: start the stack, check the API, check the broker rejects anonymous clients, publish 5 messages, and confirm the classifier received them. CI runs the same script.
+
+Port 8000 is used instead of 5000 because macOS reserves 5000 for AirPlay Receiver.
 
 ### Machine learning
 _Coming in M2._

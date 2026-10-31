@@ -3,7 +3,7 @@
 The formats each part of the system relies on: firmware → MQTT → classifier → database → API → app.
 If you change anything here, update every consumer in the same commit, bump the version, and add a line to the changelog at the bottom.
 
-Version: **0.2**
+Version: **0.3**
 
 Values marked **provisional** are checked during the ML step (M2) and then finalized.
 
@@ -67,7 +67,9 @@ Payload (JSON, one message per second, containing the last `R` samples):
 
 ## 4. Web API (cloud → app)
 
-Base URL: `http://<host>:5000` locally, `http://<vm-ip>` on Azure. All responses are JSON. Timestamps are Unix **milliseconds**.
+Base URL: `http://<host>:8000` locally (macOS reserves port 5000 for AirPlay), `http://<vm-ip>` on Azure. All responses are JSON. Timestamps are Unix **milliseconds**.
+
+Bad query parameters (missing `device_id`, `limit` outside 1–500, malformed `before` or `date`) return `400`.
 
 ### `GET /api/health`
 ```json
@@ -129,3 +131,4 @@ CREATE INDEX predictions_device_ts ON predictions (device_id, ts DESC);
 |---|---|---|
 | 0.1 | 2026-10-11 | Initial draft (two-person split) |
 | 0.2 | 2026-10-30 | Solo project; provisional R = 5 Hz, W = 10, gravity check added |
+| 0.3 | 2026-10-31 | Local API port 5000 → 8000; documented 400 cases |

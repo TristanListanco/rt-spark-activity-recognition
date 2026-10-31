@@ -1,0 +1,82 @@
+# Cloud stack: MQTT broker, database, classifier and Web API.
+#   cp cloud/.env.example cloud/.env   (then change the passwords)
+#   docker compose -f cloud/docker-compose.yml up -d --build --wait
+
+name: activity
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    entrypoint: ["/bin/sh", "/opt/mqtt/entrypoint.sh"]
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in cloud/.env}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in cloud/.env}
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./mosquitto:/opt/mqtt:ro
+      - mosquitto-data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -u \"$$MQTT_USERNAME\" -P \"$$MQTT_PASSWORD\" -t '$$SYS/broker/uptime' -C 1 -W 5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+      start_interval: 1s
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in cloud/.env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in cloud/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in cloud/.env}
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 1s
+    restart: unless-stopped
+
+  classifier:
+    build: ./classifier
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+      start_interval: 1s
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    environment:
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Manila}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+      start_interval: 1s
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  pgdata:
