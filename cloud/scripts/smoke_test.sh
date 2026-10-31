@@ -12,6 +12,9 @@ compose=(docker compose -f "$cloud_dir/docker-compose.yml")
 step() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 json() { python3 -c "import json, sys; d = json.load(sys.stdin); print($1)"; }
+# Fetch the whole response before searching it: with `curl | grep -q` and pipefail, grep
+# exits at the first match and curl fails writing the rest of a larger page.
+contains() { local body; body=$(curl -fsS "$1") && [[ "$body" == *"$2"* ]]; }
 
 if [ ! -f "$cloud_dir/.env" ]; then
   echo "cloud/.env not found; creating it from .env.example"
@@ -33,7 +36,7 @@ step "Starting the stack"
 since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 step "API health (includes the database)"
-curl -fsS "$api/api/health" | grep -q '"ok"' || fail "API health check"
+contains "$api/api/health" '"ok"' || fail "API health check"
 
 step "No data yet for $device → 404"
 status=$(curl -s -o /dev/null -w '%{http_code}' "$api/api/latest?device_id=$device")
@@ -94,7 +97,7 @@ total=$(curl -fsS "$api/api/summary?device_id=$device" | json 'sum(d["seconds"].
 [ "$total" -ge "$expected" ] || fail "summary total is $total"
 
 step "Web page"
-curl -fsS "$api/" | grep -q '<title>Live Activity</title>' || fail "index page"
+contains "$api/" '<title>Live Activity</title>' || fail "index page"
 
 step "Classifier log is clean"
 logs=$("${compose[@]}" logs --no-color --since "$since" classifier)
