@@ -125,7 +125,9 @@ static void net_entry(void *parameter)
             LOG_E("message does not fit the buffer");
             continue;
         }
-        if (paho_mqtt_publish(&client, QOS0, MQTT_TOPIC, json) == 0)
+        /* RT-Thread's Paho port only supports QoS 1 (the broker acknowledges each message);
+         * the call doesn't block, the client thread handles the acknowledgement. */
+        if (paho_mqtt_publish(&client, QOS1, MQTT_TOPIC, json) == 0)
             sent++;
         else
             failed++;

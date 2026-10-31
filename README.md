@@ -47,7 +47,7 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 - [x] M1b: Firmware toolchain builds and flashes the stock BSP
 - [x] M2: ML model trained and exported
 - [x] M3: Classifier + API working end to end with simulated data
-- [ ] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
+- [x] M4: Firmware publishes real IMU data over Wi-Fi/MQTT
 - [ ] M5: Android app
 - [ ] M6: Deployed to an Azure VM
 - [ ] M7: Own data collected, model fine-tuned

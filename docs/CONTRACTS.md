@@ -3,7 +3,7 @@
 The formats each part of the system relies on: firmware → MQTT → classifier → database → API → app.
 If you change anything here, update every consumer in the same commit, bump the version, and add a line to the changelog at the bottom.
 
-Version: **0.5**
+Version: **0.6**
 
 Values marked **provisional** are checked during the ML step (M2) and then finalized.
 
@@ -40,7 +40,7 @@ The firmware converts raw IMU readings to these units **before** publishing; not
 | Port | `1883` |
 | Auth | username/password from `cloud/.env` (never committed) |
 | Topic | `activity/<device_id>/imu`, e.g. `activity/rtspark-01/imu` |
-| QoS | `0` |
+| QoS | `1` (RT-Thread's Paho port only supports QoS 1; the classifier subscribes at QoS 0, so the broker delivers to it at QoS 0) |
 | Publish interval | once per second |
 
 Payload (JSON, one message per second, containing the last `R` samples):
@@ -147,3 +147,4 @@ CREATE INDEX predictions_device_ts ON predictions (device_id, ts DESC);
 | 0.3 | 2026-10-31 | Local API port 5000 → 8000; documented 400 cases |
 | 0.4 | 2026-10-31 | M2: R = 5 Hz, accel in g with gravity, gyro in rad/s, W = 10 confirmed from the data; no gravity removal |
 | 0.5 | 2026-10-31 | M3: classifier behaviour section, 503 on database outage, meaning of `ts` and `seconds`, web page at `/` |
+| 0.6 | 2026-10-31 | M4: board publishes with QoS 1 (the only QoS RT-Thread's Paho port supports) |

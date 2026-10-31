@@ -22,6 +22,15 @@ import kconfiglib
 SETTINGS = [
     # On-board RW007 Wi-Fi (SPI2); pulls in lwIP, SAL and the WLAN framework
     ("BSP_USING_RW007_WLAN", "y"),
+    # RT-Spark wiring (pin index = port * 16 + pin). The rw007 package's Kconfig is
+    # read before the board's and its generic defaults win (e.g. RST = 187, a pin
+    # this chip doesn't have), which hangs the driver waiting for the module at
+    # boot. Values from the board's Kconfig and RT-Thread's own RT-Spark SDK.
+    ("RW007_CS_PIN", "90"),  # PF10
+    ("RW007_BOOT0_PIN", "29"),  # PB13 (shared with SPI2 SCK)
+    ("RW007_BOOT1_PIN", "90"),  # PF10 (shared with CS)
+    ("RW007_INT_BUSY_PIN", "107"),  # PG11
+    ("RW007_RST_PIN", "111"),  # PG15
     # On-board ICM-20608 6-axis IMU on software I2C bus 2
     ("BSP_USING_ICM20608", "y"),
     # MQTT client. Pipe mode (the default for RT-Thread 4.1+) needs the POSIX
@@ -37,6 +46,9 @@ SETTINGS = [
     ("NETUTILS_NTP_HOSTNAME", "pool.ntp.org"),
     ("NETUTILS_NTP_HOSTNAME2", "time.google.com"),
     ("NETUTILS_NTP_HOSTNAME3", "time.cloudflare.com"),
+    # Kernel object names up to 16 chars; the ICM-20608 driver names its mutex
+    # "mutex_icm20608" (14), which logs an error at boot with the default 12.
+    ("RT_NAME_MAX", "16"),
 ]
 
 

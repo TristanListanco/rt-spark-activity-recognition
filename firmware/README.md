@@ -58,6 +58,20 @@ Serial console commands (115200 baud):
 - `imu_read`: the last second of samples in milli-g and milli-rad/s. Lying still, the magnitude should be about 1000 mg (gravity)
 - `wifi scan`, `ifconfig`, `ping <host>`: standard RT-Thread network commands
 
+## Troubleshooting
+
+Problems hit while bringing the board up, and their fixes:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Boots to `msh />` but no `imu`/`net` log lines; `ifconfig` finds no interface | The RW007 driver waits forever at boot for the module's ready pin. The rw007 package's generic pin defaults (e.g. RST = 187, which doesn't exist on this chip) had overridden the board's | The correct RT-Spark pins are set explicitly in `tools/firmware_config.py` (CS 90, INT 107, RST 111) |
+| `not find ap!` when joining | The network isn't visible on 2.4 GHz, or the SSID differs byte for byte | iPhone hotspot: turn on **Maximize Compatibility** (2.4 GHz) and **Allow Others to Join**. iOS names use a curly apostrophe (`Tristan’s`), so copy it exactly. `wifi scan` on the board shows what it can see |
+| Board gets an IP but can't reach the broker on the Mac | The hotspot is "IPv6-only preferred" (RFC 8925): macOS skips IPv4 there, while the board still gets IPv4 | Make the Mac take IPv4: `networksetup -setv6LinkLocal Wi-Fi` (undo later with `networksetup -setv6automatic Wi-Fi`). The Mac then gets a `172.20.10.x` address to put in `MQTT_HOST` |
+| `Not support Qos0 config, only support Qos1` | RT-Thread's Paho port only publishes with QoS 1 | The firmware uses QoS 1 (contract v0.6) |
+| `[E/[RW007]] The wifi Stage 1 status 0 0 0 1` at boot | Logged by the RW007 driver during its normal start-up | Harmless; the module works afterwards |
+
+Verified on the board (October 31, 2026): lying still it reads |a| ≈ 1.01 g. It publishes one message per second with NTP timestamps exactly 1000 ms apart, and reconnects about 6 s after the broker restarts.
+
 ## Changing the RT-Thread configuration
 
 The settings live in [`tools/firmware_config.py`](../tools/firmware_config.py): the on-board RW007 and ICM-20608, Paho MQTT in pipe mode, and netutils NTP. To change them, apply the script to a full board package and copy the result back:

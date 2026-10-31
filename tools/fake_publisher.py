@@ -138,7 +138,7 @@ def main() -> None:
                 "rate_hz": args.rate,
                 "samples": samples,
             }
-            info = client.publish(topic, json.dumps(payload), qos=0)
+            info = client.publish(topic, json.dumps(payload), qos=1)  # same QoS as the board
             info.wait_for_publish(timeout=5)
             print(f"[{n + 1}] {activity}: {len(samples)} samples")
             time.sleep(max(0.0, start + n + 1 - time.monotonic()))

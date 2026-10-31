@@ -64,7 +64,7 @@
 
 /* end of rt_strnlen options */
 /* end of klibc options */
-#define RT_NAME_MAX 12
+#define RT_NAME_MAX 16
 #define RT_CPUS_NR 1
 #define RT_ALIGN_SIZE 8
 #define RT_THREAD_PRIORITY_32
@@ -344,11 +344,11 @@
 #define RW007_USING_STM32_DRIVERS
 #define RW007_SPI_MAX_HZ 30000000
 #define RW007_SPI_BUS_NAME "spi2"
-#define RW007_CS_PIN 102
-#define RW007_BOOT0_PIN 175
-#define RW007_BOOT1_PIN 102
-#define RW007_INT_BUSY_PIN 62
-#define RW007_RST_PIN 187
+#define RW007_CS_PIN 90
+#define RW007_BOOT0_PIN 29
+#define RW007_BOOT1_PIN 90
+#define RW007_INT_BUSY_PIN 107
+#define RW007_RST_PIN 111
 
 /* CYW43012 WiFi */
 
