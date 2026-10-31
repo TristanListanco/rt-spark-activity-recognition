@@ -27,7 +27,19 @@ flowchart LR
   API -- "HTTP/JSON" --> APP["Android app (Kotlin + Volley)"]
 ```
 
-Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md](docs/CONTRACTS.md).
+Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md](docs/CONTRACTS.md). The final end-to-end checks are in [docs/verification.md](docs/verification.md).
+
+### Web API
+
+All endpoints take `device_id` (e.g. `rtspark-01`) and return JSON; timestamps are Unix milliseconds. Full details in [CONTRACTS.md, section 4](docs/CONTRACTS.md#4-web-api-cloud--app).
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/health` | `{"status": "ok"}`, or 503 if the database is down |
+| `GET /api/latest?device_id=…` | The newest prediction: activity, confidence, time |
+| `GET /api/history?device_id=…&limit=50&before=<ts>` | Predictions, newest first, paged with `before` |
+| `GET /api/summary?device_id=…&date=YYYY-MM-DD` | Seconds per activity (walk, run, idle) on that day |
+| `GET /` | Live web page |
 
 ## Repository layout
 
@@ -51,11 +63,10 @@ Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md
 - [x] M5: Android app
 - [x] M6: Deployed to an Azure VM
 - [x] M7: Own data recorded with the board; idle class added
-- [ ] M8: Final test, demo video
+- [x] M8: Final verification ([docs/verification.md](docs/verification.md))
+- [ ] Demo video
 
 ## Running it
-
-*Filled in as each part is built.*
 
 ### Cloud stack (local)
 
@@ -92,9 +103,11 @@ docker compose -f cloud/docker-compose.yml logs -f classifier                # o
 1. Start the stack and check the API and database are healthy.
 2. Check the broker rejects anonymous clients.
 3. Simulate a board that walks for 6 s and then runs for 6 s.
-4. Expect 11 stored predictions, a latest label of "run", both activities in the history, a matching daily summary, the web page loading, and a clean classifier log.
+4. Expect one stored prediction per message once the 4 s window is full (9 of 12), a latest label of "run", both activities in the history, a matching daily summary, the web page loading, and a clean classifier log.
 
-Replaying real dataset rows through the running stack, the label switched to "run" about 1 s after the data switched.
+Replaying real dataset rows through the running stack, the label switched to "run" about 2 s after the data switched.
+
+<img src="docs/web.png" width="360" alt="The live web page in dark mode: a green Idle label at 100% confidence, today's walking, running and idle totals, and a table of the ten most recent predictions">
 
 Port 8000 is used instead of 5000 because macOS reserves 5000 for AirPlay Receiver.
 
@@ -163,9 +176,11 @@ On macOS, the first time the board is plugged in you have to click **Allow** on 
 
 A native Android app (Kotlin, Jetpack Compose, Material 3) that polls the API with **Volley**, as the lab recommends. Minimum Android 8.0 (API 26).
 
-| Live | History | API unreachable (dark mode) |
+| Live | History | API unreachable |
 |---|---|---|
-| <img src="docs/app/live.png" width="240" alt="Live tab: a large orange card reading Running, 100% confident, updated just now, above today's walking and running totals"> | <img src="docs/app/history.png" width="240" alt="History tab: alternating Walking and Running stretches with time ranges, durations and average confidence"> | <img src="docs/app/offline-dark.png" width="240" alt="Live tab in dark mode with a red banner: Can't reach the server, while still showing the last prediction"> |
+| <img src="docs/app/live.png" width="240" alt="Live tab: a large green card reading Idle, 100% confident, updated 2 s ago, above today's walking, running and idle totals with a three-colour bar"> | <img src="docs/app/history.png" width="240" alt="History tab: stretches of Idle, Walking and Running from the board, each with a time range, duration and average confidence"> | <img src="docs/app/offline-dark.png" width="240" alt="Live tab with a red banner: Can't reach the server, and a grey card reading No connection"> |
+
+Screenshots from a Pixel 7 showing the board's real data through the Azure deployment.
 
 - **Live:** the current activity in a large card (blue for walking, orange for running, green for idle, grey when no data has arrived for 10 s), its confidence and age, and today's time per activity with a proportional bar. It polls `/api/latest` every second while visible and stops when the app is in the background.
 - **History:** the API's one-prediction-per-second records merged into stretches ("Running · 20:50:41 – 20:51:01 · 21 s · 99%"). Pull to refresh; older pages load as you scroll (`before=` paging).
@@ -174,7 +189,7 @@ A native Android app (Kotlin, Jetpack Compose, Material 3) that polls the API wi
 ```bash
 cd app
 ./gradlew installDebug          # build and install on a connected phone or a running emulator
-./gradlew testDebugUnitTest     # 22 unit tests: JSON parsing, history stretches, formatting, Live ViewModel
+./gradlew testDebugUnitTest     # 27 unit tests: JSON parsing, history stretches, formatting, Live ViewModel and card text
 ./gradlew lintDebug
 ```
 

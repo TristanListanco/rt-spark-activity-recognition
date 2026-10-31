@@ -83,14 +83,7 @@ private fun ActivityCard(state: LiveUiState) {
     val prediction = state.prediction
     val live = prediction != null && !state.isStale && state.status != LiveStatus.NoData
 
-    val (title, subtitle) = when {
-        state.status == LiveStatus.Loading -> "Connecting…" to "Asking the API for the latest prediction"
-        prediction == null -> "Waiting for data" to "No predictions for this device yet. Is the board on?"
-        state.isStale -> "No new data" to
-            "Last: ${activityName(prediction.activity)}, ${formatAgo(state.now - prediction.ts)}. Is the board on?"
-        else -> activityName(prediction.activity) to
-            "${(prediction.confidence * 100).toInt()}% confident · updated ${formatAgo(state.now - prediction.ts)}"
-    }
+    val (title, subtitle) = activityCardText(state)
     val background by animateColorAsState(
         targetValue = if (live) colors.of(prediction.activity) else colors.inactive, // live ⇒ prediction != null
         label = "activity colour",
@@ -113,6 +106,24 @@ private fun ActivityCard(state: LiveUiState) {
             Spacer(Modifier.height(8.dp))
             Text(subtitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+/**
+ * The activity card's title and subtitle. Without a prediction, an unreachable API is
+ * reported as such: it says nothing about whether the board is sending.
+ */
+internal fun activityCardText(state: LiveUiState): Pair<String, String> {
+    val prediction = state.prediction
+    return when {
+        state.status == LiveStatus.Loading -> "Connecting…" to "Asking the API for the latest prediction"
+        prediction == null && state.status is LiveStatus.Error ->
+            "No connection" to "The latest prediction will show once the API can be reached"
+        prediction == null -> "Waiting for data" to "No predictions for this device yet. Is the board on?"
+        state.isStale -> "No new data" to
+            "Last: ${activityName(prediction.activity)}, ${formatAgo(state.now - prediction.ts)}. Is the board on?"
+        else -> activityName(prediction.activity) to
+            "${(prediction.confidence * 100).toInt()}% confident · updated ${formatAgo(state.now - prediction.ts)}"
     }
 }
 
