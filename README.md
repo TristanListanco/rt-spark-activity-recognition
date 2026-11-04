@@ -10,6 +10,21 @@ Laboratory Activity 3: a full-stack IoT system that classifies walking, running 
 
 The RT-Spark board streams accelerometer and gyroscope readings over Wi-Fi/MQTT to a cloud service. There, a small 1D-CNN classifies the activity and the result is stored in PostgreSQL. A Flask API serves the results to an Android app.
 
+## Laboratory alignment
+
+The activity brings together cloud services and machine learning, embedded firmware, and a mobile app. The lab recommends developing them in that order; the simulated publisher lets the cloud be checked before connecting the physical board.
+
+| Laboratory requirement | How this project addresses it |
+|---|---|
+| Read accelerometer and gyroscope data and send it over Wi-Fi/MQTT | [IMU firmware](firmware/applications/imu.c) reads all six axes; [network firmware](firmware/applications/net.c) sends one batch per second through the RW007 |
+| Provide an MQTT broker, classifier, database and web API | [Docker Compose](cloud/docker-compose.yml) runs Mosquitto, the ONNX classifier, PostgreSQL and Flask locally or on an Azure VM |
+| Investigate the dataset's measurement units and collection conditions | [Dataset exploration](ml/explore.py) checks the 5 Hz rate, gravity, sensor units and wrist placement; findings are in the [ML report](docs/ml-report.md#1-dataset) |
+| Use temporal information while keeping the model lightweight | [The CNN](ml/activity_ml/model.py) learns across successive samples on all axes; comparisons with a simpler statistics baseline justify the model choice |
+| Evaluate generalization and collect additional data | [Evaluation scripts](ml/evaluate.py) test held-out days, rotated devices and cross-wrist transfer; [board evaluation](ml/evaluate_own.py) tests recorded walk/run/idle data |
+| Show live predictions and history in a responsive Android app | Kotlin/Compose screens use asynchronous Volley requests, coroutines and ViewModels, with separate data/UI layers and connection-error states |
+
+For a physical demonstration, use an RT-Spark with its onboard sensors and Wi-Fi, a USB data cable, a 2.4 GHz IPv4 network and an Android 8.0+ phone. Development uses Docker Compose, Python, the Arm toolchain/PlatformIO and Android Studio; Azure CLI is needed only to provision the cloud VM. The local simulated demonstration needs neither the board nor the training CSVs because the pretrained ONNX model is committed.
+
 ## Architecture
 
 ```mermaid
@@ -29,9 +44,21 @@ flowchart LR
 
 Message formats, API endpoints and the database schema are in [docs/CONTRACTS.md](docs/CONTRACTS.md). The final end-to-end checks are in [docs/verification.md](docs/verification.md).
 
+The shared sensor settings are important when reproducing the project:
+
+| Setting | Value |
+|---|---|
+| Sample order and units | `[ax, ay, az, gx, gy, gz]`; acceleration in g with gravity included, angular velocity in rad/s |
+| Sampling and transmission | 5 Hz: five samples per MQTT message, one message per second |
+| Classification window | 20 samples (4 s), updated once per second; the first prediction needs four batches |
+| Prediction feedback | `activity/<device_id>/prediction` returns the cloud's label and confidence to the board's LCD |
+| Timestamps | Unix milliseconds; an IMU batch timestamps its first sample, while a prediction timestamps its newest sample. Before NTP sync the board sends `0`, and the classifier uses arrival time |
+
+The classifier drops invalid payloads or rates other than 5 Hz and resets a device's window after a gap longer than 3 s. This prevents mixing samples from before and after a stream interruption.
+
 ### Web API
 
-All endpoints take `device_id` (e.g. `rtspark-01`) and return JSON; timestamps are Unix milliseconds. Full details in [CONTRACTS.md, section 4](docs/CONTRACTS.md#4-web-api-cloud--app).
+The latest, history and summary endpoints take `device_id` (e.g. `rtspark-01`); health and the live page do not. API responses are JSON; timestamps are Unix milliseconds. Full details in [CONTRACTS.md, section 4](docs/CONTRACTS.md#4-web-api-cloud--app).
 
 | Endpoint | Returns |
 |---|---|
@@ -40,6 +67,8 @@ All endpoints take `device_id` (e.g. `rtspark-01`) and return JSON; timestamps a
 | `GET /api/history?device_id=…&limit=50&before=<ts>` | Predictions, newest first, paged with `before` |
 | `GET /api/summary?device_id=…&date=YYYY-MM-DD` | Seconds per activity (walk, run, idle) on that day |
 | `GET /` | Live web page |
+
+Invalid query parameters return `400`; latest returns `404` when a device has no predictions, and database-dependent requests return `503` during a database outage. Daily summary values count predictions as seconds at the expected one-prediction-per-second rate; they do not fill gaps in missing data. The day is determined in `APP_TIMEZONE`, which defaults to `Asia/Manila`.
 
 ## Repository layout
 
@@ -66,7 +95,16 @@ All endpoints take `device_id` (e.g. `rtspark-01`) and return JSON; timestamps a
 - [x] M8: Final verification ([docs/verification.md](docs/verification.md))
 - [ ] Demo video
 
+The M8 report records verification on **October 31, 2026, 22:38-22:48 Asia/Manila**. It leaves explicit confirmation of wrist-worn walk/run transitions, the phone on mobile data and recovery from actual board Wi-Fi loss for the physical demonstration. The results and screenshots below reflect that recorded scope.
+
 ## Running it
+
+Start from a full clone and run the following commands from its root unless a step changes directory:
+
+```bash
+git clone --recurse-submodules https://github.com/TristanListanco/rt-spark-activity-recognition.git
+cd rt-spark-activity-recognition
+```
 
 ### Cloud stack (local)
 
@@ -88,6 +126,8 @@ open http://localhost:8000/             # live page
 ```
 
 Simulate the board with `tools/fake_publisher.py`, which reads the MQTT credentials from `cloud/.env`. Its default signals are simple but physically plausible, so the model labels them correctly. Add `--csv ml/data/dataset.csv` to replay real dataset rows instead.
+
+These synthetic signals verify integration, not real-world model accuracy. Stop the publisher before connecting a board with the same device ID, or pass `--device-id demo-01` and query that ID separately.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
@@ -111,9 +151,26 @@ Replaying real dataset rows through the running stack, the label switched to "ru
 
 Port 8000 is used instead of 5000 because macOS reserves 5000 for AirPlay Receiver.
 
+For **Windows PowerShell**, the equivalent local setup is below. Install Python 3.12 with the Windows Python launcher first, and edit the copied `.env` before starting Docker. Choose your own MQTT/database passwords; the publisher and board must use the broker's matching credentials.
+
+```powershell
+Copy-Item cloud/.env.example cloud/.env
+# Edit cloud/.env before continuing.
+docker compose --env-file cloud/.env -f cloud/docker-compose.yml up -d --build --wait
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r tools/requirements.txt
+.\.venv\Scripts\python.exe tools/fake_publisher.py --switch-every 6 --count 12
+Invoke-RestMethod "http://localhost:8000/api/latest?device_id=rtspark-01"
+Start-Process http://localhost:8000/
+```
+
+Inspect services with `docker compose -f cloud/docker-compose.yml ps`. Stop them with `docker compose -f cloud/docker-compose.yml down`; named database volumes are retained.
+
 ### Cloud deployment (Azure)
 
 The same Docker Compose stack runs on an Azure VM, so the board and the phone work from any network, including mobile data:
+
+The address and VM details below describe the project's recorded deployment. When creating your own VM, use the hostname printed by the setup script in the board and app settings, and check region access, quotas and costs in your subscription. This stack uses password-authenticated MQTT on port 1883 and plain HTTP; TLS is not configured.
 
 | | |
 |---|---|
@@ -152,6 +209,12 @@ uv run pytest
 
 The exported model takes raw 4 s windows `(batch, 20, 6)` in g and rad/s and returns `[walk, run, idle]` probabilities. Walk and run come from the Kaggle data plus board recordings, idle from board recordings only (`tools/record.py`). Magnitude channels and normalization happen inside the ONNX file, so the classifier service needs only numpy and ONNX Runtime.
 
+The Kaggle data contains 88,588 samples from one person's wrist-worn phone across 12 days. The deployed CNN has **1,235 parameters**: six sensor axes plus two magnitude channels pass through two temporal convolution layers, global average pooling and a three-class softmax. This uses temporal information while keeping inference small; the [ML report](docs/ml-report.md#6-the-labs-design-questions) discusses accuracy, compute/memory cost and probabilistic output. Softmax confidence is not calibrated as an exact probability of correctness.
+
+To collect board data, use LEFT for `walk`, RIGHT for `run`, UP for `idle`, and DOWN to stop labelling; serial equivalents are `rec walk`, `rec run`, `rec idle` and `rec stop`. From the repository root, `.venv/bin/python tools/record.py --host <broker-host>` saves labelled CSVs under `ml/data/own/` using credentials from `cloud/.env`. On PowerShell, use `.\.venv\Scripts\python.exe` instead. The classifier ignores these labels when predicting live activity.
+
+**Reproducing training requires the raw data.** The Kaggle CSV and board recordings are not committed. Without board recordings, `train.py` falls back to a two-class model and cannot reproduce `idle`. Training overwrites model artifacts; use `--out-dir models/experiment` to keep an experiment separate from the committed model.
+
 ### Firmware
 
 RT-Thread on the RT-Spark, using RT-Thread's official `stm32f407-rt-spark` board package with its RW007 Wi-Fi and ICM-20608 IMU drivers. The firmware samples at 5 Hz and publishes one MQTT message per second. Its LCD shows the cloud's prediction (sent back over MQTT) and the board's status. Details, LED meanings and serial commands: [firmware/README.md](firmware/README.md).
@@ -171,6 +234,10 @@ pio device monitor -p /dev/cu.usbmodem* -b 115200
 ```
 
 On macOS, the first time the board is plugged in you have to click **Allow** on the "Allow accessory to connect?" prompt. The board needs a **2.4 GHz, IPv4** Wi-Fi network; a phone hotspot works.
+
+The handout's reference firmware uses LSM6DSL/ISM43362, CubeMX, CMSIS-Driver and FreeRTOS/coreMQTT. This implementation adapts that sensor -> Wi-Fi -> MQTT sequence to RT-Thread, ICM-20608/RW007 and Paho. Its board/package configuration is in [tools/firmware_config.py](tools/firmware_config.py) and `firmware/.config`; the reference setup's SPI3, pack-installation and `solution.yml` edits are not build steps for this repository.
+
+The shell build/deployment scripts target macOS/Linux; on Windows use a Bash/Linux environment such as WSL2, with USB/ST-Link access for flashing. Set each `WIFI_NETWORKS` entry in `secrets.h` to your network and reachable broker address, and match the MQTT credentials in `cloud/.env`. Check `imu_read` for sensor readings and `app_status` for Wi-Fi, MQTT and publish status. A build without `secrets.h` uses placeholders and does not establish a working hardware connection.
 
 ### Android app
 
@@ -195,6 +262,16 @@ cd app
 
 Or open `app/` in Android Studio. Gradle needs JDK 17 or newer (Android Studio's bundled JDK works: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`). Missing SDK parts (platform 37, build-tools 36) are installed automatically on the first build.
 
+On **Windows PowerShell**, use the checked-in Windows wrapper from `app/` (CI uses JDK 21):
+
+```powershell
+cd app
+.\gradlew.bat installDebug
+.\gradlew.bat testDebugUnitTest lintDebug
+```
+
+Use `assembleDebug` to build without installing; the APK is at `app/app/build/outputs/apk/debug/app-debug.apk` relative to the repository root. A physical phone needs the computer's LAN IP for a local API: `localhost` refers to the phone itself. Use the documented `10.0.2.2:8000` address on the emulator.
+
 Structure: `data/` holds the Volley client wrapped in coroutines, JSON parsing, the repository (behind an interface, so ViewModels are tested with a fake) and the DataStore settings. `ui/live`, `ui/history` and `ui/settings` each have a ViewModel exposing a `StateFlow`, and `ui/theme` holds the project palette. Notes:
 - `targetSdk` stays at 36: targeting Android 17 may opt in to its local-network restrictions, and this app talks to a server on the local network.
 - Plain HTTP is allowed (`network_security_config.xml`) because the API address is set at runtime.
@@ -202,6 +279,8 @@ Structure: `data/` holds the Volley client wrapped in coroutines, JSON parsing, 
 ## Continuous integration
 
 Each part has its own GitHub Actions workflow in `.github/workflows/`. A workflow runs only when its folder changes, and its jobs skip until that part of the project exists.
+
+`repo.yml` is the exception: it runs on pull requests and pushes to `main`, including README-only changes. Firmware compilation, host tests, simulated integration and physical-board verification cover different checks; a successful build does not replace the lab demonstration.
 
 | Workflow | Runs when | What it does |
 |---|---|---|
@@ -234,6 +313,10 @@ Full details in [docs/ml-report.md](docs/ml-report.md). The model is a 1D-CNN (a
 
 The CNN trained without rotations learned *how the iPhone was worn* instead of how walking and running move. On the board it calls almost everything "run". With rotation training, the model trained only on iPhone data works on the board. The 2-class model labelled standing still as "run", so M7 added an idle class, learned from the board recordings. The deployed model uses 4 s windows, which separate idle from walking better than 2 s windows (97.2% vs 94.1%). With one session per activity, these board numbers are optimistic (report, section 10).
 
+The evaluation avoids randomly splitting neighboring, overlapping windows: Kaggle tests hold out whole days, while board tests hold out time blocks and exclude training windows that could share samples with them. Model settings were selected using the same board folds that report the score. The final exported model was trained on all available board data, so the reported 97.2% is the configuration's cross-validation result, not an independent test of that final artifact. More wearers and separate recording sessions are needed to assess wider generalization.
+
 ## Demo
 
 _Link to the demo video._
+
+When available, the recording should show the configured board publishing data, walking/running/idle on the LCD and Android app, stored history, and the remaining mobile-data and Wi-Fi-recovery checks noted in [the verification report](docs/verification.md).
